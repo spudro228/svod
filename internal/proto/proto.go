@@ -68,6 +68,15 @@ type Note struct {
 	Backlinks []string  `json:"backlinks"`
 }
 
+// Version — одна запись в истории пути.
+type Version struct {
+	Seq     int64  `json:"seq"`
+	Hash    string `json:"hash"`
+	Deleted bool   `json:"deleted,omitempty"`
+	At      int64  `json:"at"`
+	Device  string `json:"device"`
+}
+
 // SearchHit — одно попадание полнотекстового поиска.
 type SearchHit struct {
 	Path    string `json:"path"`
