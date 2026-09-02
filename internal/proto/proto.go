@@ -66,6 +66,9 @@ type Note struct {
 	Tags      []string  `json:"tags"`
 	Links     []string  `json:"links"`
 	Backlinks []string  `json:"backlinks"`
+	Aliases   []string  `json:"aliases,omitempty"`
+	Meta      map[string]string `json:"meta,omitempty"`
+	Binary    bool      `json:"binary,omitempty"`
 }
 
 // Version — одна запись в истории пути.

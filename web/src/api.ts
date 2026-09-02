@@ -24,15 +24,42 @@ export type Note = {
   tags: string[]
   links: string[]
   backlinks: string[]
+  aliases?: string[]
+  meta?: Record<string, string>
+  binary?: boolean
 }
 
 export type SearchHit = { path: string; title: string; snippet: string }
 
+export type Version = {
+  seq: number
+  hash: string
+  deleted?: boolean
+  at: number
+  device: string
+}
+
+/** Сервер отказался писать: там уже другая версия. */
+export class ConflictError extends Error {
+  constructor(
+    readonly serverHash: string,
+    readonly seq: number,
+  ) {
+    super('на сервере другая версия')
+    this.name = 'ConflictError'
+  }
+}
+
 export type Health = { ok: boolean; seq: number; fts: boolean }
 
 /** Кодируем посегментно: разделители остаются разделителями. */
-function encodePath(path: string): string {
+export function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
+}
+
+/** Адрес файла для показа в странице: картинки, pdf и прочие вложения. */
+export function rawURL(path: string): string {
+  return `/api/v1/raw/${encodePath(path)}`
 }
 
 async function get<T>(url: string): Promise<T> {
@@ -56,7 +83,52 @@ export const api = {
   note: (path: string) => get<Note>(`/api/v1/note/${encodePath(path)}`),
   search: (q: string) =>
     get<{ hits: SearchHit[] }>(`/api/v1/search?q=${encodeURIComponent(q)}&limit=50`),
+  history: (path: string) =>
+    get<{ versions: Version[] }>(`/api/v1/history/${encodePath(path)}`),
+  tags: () => get<{ tags: Record<string, number> }>('/api/v1/tags'),
+  byTag: (tag: string) =>
+    get<{ paths: string[] }>(`/api/v1/tags?tag=${encodeURIComponent(tag)}`),
+
+  /** Содержимое конкретной версии — блобы неизменяемы. */
+  async blob(hash: string): Promise<string> {
+    const res = await fetch(`/api/v1/blob/${hash}`)
+    if (!res.ok) throw new Error(`версия не найдена: ${res.status}`)
+    return res.text()
+  },
+
+  /**
+   * Сохранить файл. baseHash — версия, от которой отталкивались;
+   * пустая строка означает «файла ещё нет».
+   * Несовпадение поднимает ConflictError: сервер ничего не перезаписал.
+   */
+  async save(path: string, content: BodyInit, baseHash: string): Promise<PutResult> {
+    const headers: Record<string, string> = { 'X-Svod-Device': 'браузер' }
+    if (baseHash) headers['If-Match'] = baseHash
+
+    const res = await fetch(`/api/v1/files/${encodePath(path)}`, {
+      method: 'PUT',
+      headers,
+      body: content,
+    })
+    if (res.status === 409) {
+      const body = (await res.json()) as { server_hash: string; seq: number }
+      throw new ConflictError(body.server_hash, body.seq)
+    }
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) msg = body.error
+      } catch {
+        // тело не JSON
+      }
+      throw new Error(msg)
+    }
+    return (await res.json()) as PutResult
+  },
 }
+
+export type PutResult = { seq: number; hash: string }
 
 /**
  * Подписка на поток изменений. Сервер шлёт только номер seq —

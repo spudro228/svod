@@ -42,6 +42,9 @@ import (
 // PollInterval — страховка на случай, если WebSocket отвалился незаметно.
 const PollInterval = 30 * time.Second
 
+// DefaultExts — что синхронизируем по умолчанию: заметки и вложения к ним.
+const DefaultExts = ".md,.png,.jpg,.jpeg,.gif,.webp,.svg,.pdf"
+
 type Agent struct {
 	Vault  string
 	Server string

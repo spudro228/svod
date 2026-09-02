@@ -1,17 +1,21 @@
-// Package index разбирает markdown: заголовки, wiki-ссылки, теги.
+// Package index разбирает markdown: frontmatter, заголовки, wiki-ссылки, теги.
+//
 // Разбор идёт по AST goldmark, поэтому содержимое блоков кода не попадает
 // ни в ссылки, ни в теги — [[так]] внутри ``` остаётся текстом.
 package index
 
 import (
 	"bytes"
+	"fmt"
 	"path"
 	"regexp"
 	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	meta "github.com/yuin/goldmark-meta"
 
 	"github.com/spudro228/svod/internal/proto"
 )
@@ -28,25 +32,54 @@ var (
 
 // Parsed — всё, что мы вытащили из одной заметки.
 type Parsed struct {
-	Title    string
-	Headings []proto.Heading
-	Tags     []string
-	Links    []string
-	Body     string // плоский текст для полнотекстового поиска
+	Title       string
+	Headings    []proto.Heading
+	Tags        []string
+	Links       []string
+	Aliases     []string
+	Frontmatter map[string]string
+	Body        string // плоский текст для полнотекстового поиска
 }
 
-var md = goldmark.New()
+var md = goldmark.New(goldmark.WithExtensions(meta.Meta))
 
 // Parse разбирает содержимое заметки.
 func Parse(src []byte) Parsed {
 	p := Parsed{
-		Headings: []proto.Heading{},
-		Tags:     []string{},
-		Links:    []string{},
+		Headings:    []proto.Heading{},
+		Tags:        []string{},
+		Links:       []string{},
+		Aliases:     []string{},
+		Frontmatter: map[string]string{},
 	}
 
-	reader := text.NewReader(src)
-	doc := md.Parser().Parse(reader)
+	ctx := parser.NewContext()
+	doc := md.Parser().Parse(text.NewReader(src), parser.WithContext(ctx))
+
+	// Frontmatter goldmark-meta уже отрезал от документа.
+	fm := meta.Get(ctx)
+	tagSeen := map[string]bool{}
+	for k, v := range fm {
+		key := strings.ToLower(strings.TrimSpace(k))
+		switch key {
+		case "tags", "tag":
+			for _, t := range toList(v) {
+				t = strings.TrimPrefix(t, "#")
+				if t != "" && !tagSeen[t] {
+					tagSeen[t] = true
+					p.Tags = append(p.Tags, t)
+				}
+			}
+		case "aliases", "alias":
+			p.Aliases = append(p.Aliases, toList(v)...)
+		case "title":
+			p.Title = scalar(v)
+		default:
+			if s := scalar(v); s != "" {
+				p.Frontmatter[k] = s
+			}
+		}
+	}
 
 	var plain bytes.Buffer
 	seen := map[string]int{}
@@ -61,11 +94,12 @@ func Parse(src []byte) Parsed {
 			if txt == "" {
 				return ast.WalkContinue, nil
 			}
-			id := slug(txt)
-			if seen[id] > 0 {
-				id = id + "-" + itoa(seen[id])
+			base := slug(txt)
+			id := base
+			if seen[base] > 0 {
+				id = fmt.Sprintf("%s-%d", base, seen[base])
 			}
-			seen[slug(txt)]++
+			seen[base]++
 			p.Headings = append(p.Headings, proto.Heading{
 				Level: node.Level, Text: txt, ID: id,
 			})
@@ -101,14 +135,11 @@ func Parse(src []byte) Parsed {
 		p.Links = append(p.Links, target)
 	}
 
-	tagSeen := map[string]bool{}
 	for _, m := range reTag.FindAllStringSubmatch(p.Body, -1) {
-		tag := m[2]
-		if tagSeen[tag] {
-			continue
+		if tag := m[2]; !tagSeen[tag] {
+			tagSeen[tag] = true
+			p.Tags = append(p.Tags, tag)
 		}
-		tagSeen[tag] = true
-		p.Tags = append(p.Tags, tag)
 	}
 
 	return p
@@ -127,10 +158,58 @@ func Normalize(target string) string {
 	return target
 }
 
-// TitleFromPath — запасной заголовок, когда в заметке нет H1.
+// TitleFromPath — запасной заголовок, когда в заметке нет ни H1, ни frontmatter.
 func TitleFromPath(p string) string {
-	base := path.Base(p)
-	return strings.TrimSuffix(base, ".md")
+	return strings.TrimSuffix(path.Base(p), ".md")
+}
+
+// IsNote сообщает, разбираем ли мы этот путь как markdown.
+// Вложения хранятся как есть: индексировать в них нечего.
+func IsNote(p string) bool {
+	return strings.EqualFold(path.Ext(p), ".md")
+}
+
+// toList приводит значение frontmatter к списку строк:
+// в YAML теги пишут и списком, и строкой через запятую.
+func toList(v any) []string {
+	switch val := v.(type) {
+	case []any:
+		out := make([]string, 0, len(val))
+		for _, item := range val {
+			if s := scalar(item); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		var out []string
+		for _, part := range strings.FieldsFunc(val, func(r rune) bool {
+			return r == ',' || r == ' '
+		}) {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+		return out
+	default:
+		if s := scalar(v); s != "" {
+			return []string{s}
+		}
+		return nil
+	}
+}
+
+func scalar(v any) string {
+	switch val := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(val)
+	case []any, map[string]any, map[any]any:
+		return "" // вложенные структуры в карточку заметки не тащим
+	default:
+		return strings.TrimSpace(fmt.Sprint(val))
+	}
 }
 
 func nodeText(n ast.Node, src []byte) string {
@@ -139,10 +218,8 @@ func nodeText(n ast.Node, src []byte) string {
 		switch t := c.(type) {
 		case *ast.Text:
 			b.Write(t.Segment.Value(src))
-		case *ast.CodeSpan:
-			b.WriteString(nodeText(t, src))
 		default:
-			b.WriteString(nodeText(c, src))
+			b.WriteString(nodeText(t, src))
 		}
 	}
 	return strings.TrimSpace(b.String())
@@ -153,18 +230,4 @@ func slug(s string) string {
 	s = reSlugDrop.ReplaceAllString(s, "")
 	s = reSlugGap.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }

@@ -11,8 +11,10 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +29,8 @@ import (
 	"github.com/spudro228/svod/internal/store"
 )
 
-const maxNoteSize = 8 << 20 // 8 МБ на файл — заметка столько не весит
+// Заметка столько не весит, а картинка вполне может.
+const maxFileSize = 32 << 20
 
 type Server struct {
 	st    *store.Store
@@ -59,6 +62,8 @@ func New(st *store.Store, token string, webFS fs.FS, log *slog.Logger) http.Hand
 		r.Get("/blob/{hash}", s.blob)
 		r.Get("/note/*", s.note)
 		r.Get("/history/*", s.history)
+		r.Get("/raw/*", s.raw)
+		r.Get("/tags", s.tags)
 		r.Put("/files/*", s.put)
 		r.Delete("/files/*", s.del)
 		r.Get("/stream", s.stream)
@@ -188,19 +193,71 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"versions": versions})
 }
 
+// raw отдаёт файл по пути с правильным типом содержимого.
+// Через эту ручку страница показывает картинки и вложения.
+func (s *Server) raw(w http.ResponseWriter, r *http.Request) {
+	p := pathParam(r)
+	hash, err := s.st.Hash(p)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if hash == "" {
+		writeErr(w, http.StatusNotFound, "файл не найден: "+p)
+		return
+	}
+	b, err := s.st.Blob(hash)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "содержимое потеряно")
+		return
+	}
+
+	ct := mime.TypeByExtension(strings.ToLower(path.Ext(p)))
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", ct)
+	// Хеш в ETag: содержимое неизменяемо, поэтому кеш безопасен.
+	w.Header().Set("ETag", `"`+hash+`"`)
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	if match := r.Header.Get("If-None-Match"); match == `"`+hash+`"` {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Write(b)
+}
+
+func (s *Server) tags(w http.ResponseWriter, r *http.Request) {
+	if tag := r.URL.Query().Get("tag"); tag != "" {
+		paths, err := s.st.ByTag(tag)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"paths": paths})
+		return
+	}
+	all, err := s.st.Tags()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": all})
+}
+
 func (s *Server) put(w http.ResponseWriter, r *http.Request) {
 	p := pathParam(r)
 	if p == "" {
 		writeErr(w, http.StatusBadRequest, "пустой путь")
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxNoteSize+1))
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxFileSize+1))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if len(body) > maxNoteSize {
-		writeErr(w, http.StatusRequestEntityTooLarge, "файл больше 8 МБ")
+	if len(body) > maxFileSize {
+		writeErr(w, http.StatusRequestEntityTooLarge, "файл больше 32 МБ")
 		return
 	}
 

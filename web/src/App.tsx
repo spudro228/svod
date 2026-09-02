@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, openStream, type FileMeta, type Note, type SearchHit } from './api'
+import {
+  api,
+  ConflictError,
+  openStream,
+  rawURL,
+  type FileMeta,
+  type Note,
+  type SearchHit,
+  type Version,
+} from './api'
+import type { EditorHandle } from './editor'
 import { headingId, renderNote } from './md'
 
 // ───────────────────────── дерево ─────────────────────────
@@ -39,16 +49,20 @@ function buildTree(files: FileMeta[]): TreeNode[] {
   return root.children
 }
 
-/** Ищем цель wiki-ссылки: сначала по полному пути, потом по имени файла. */
-function resolveLink(files: FileMeta[], target: string): string | null {
-  const clean = target.replace(/\.md$/i, '')
-  const exact = files.find((f) => f.path.replace(/\.md$/i, '') === clean)
+/**
+ * Ищем цель ссылки или вложения: сначала по полному пути,
+ * потом по имени файла — так пишут в Obsidian.
+ */
+function resolveTarget(files: FileMeta[], target: string): string | null {
+  const clean = target.replace(/^\.?\//, '')
+  const exact = files.find((f) => f.path === clean || f.path.replace(/\.md$/i, '') === clean.replace(/\.md$/i, ''))
   if (exact) return exact.path
 
-  const base = clean.split('/').pop()?.toLowerCase() ?? ''
-  const byName = files.find(
-    (f) => (f.path.split('/').pop() ?? '').replace(/\.md$/i, '').toLowerCase() === base,
-  )
+  const base = (clean.split('/').pop() ?? '').toLowerCase()
+  const byName = files.find((f) => {
+    const n = (f.path.split('/').pop() ?? '').toLowerCase()
+    return n === base || n.replace(/\.md$/i, '') === base.replace(/\.md$/i, '')
+  })
   return byName ? byName.path : null
 }
 
@@ -56,10 +70,17 @@ function displayName(path: string): string {
   return (path.split('/').pop() ?? path).replace(/\.md$/i, '')
 }
 
+function isImage(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(path)
+}
+
 // ───────────────────────── приложение ─────────────────────────
 
 type Overlay = null | 'files' | 'search'
-type Mode = 'read' | 'source'
+type Mode = 'read' | 'edit'
+type Theme = 'dark' | 'light'
+
+const THEME_KEY = 'svod.theme'
 
 export default function App() {
   const [files, setFiles] = useState<FileMeta[]>([])
@@ -71,13 +92,28 @@ export default function App() {
   const [path, setPath] = useState<string | null>(null)
   const [note, setNote] = useState<Note | null>(null)
   const [mode, setMode] = useState<Mode>('read')
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [conflict, setConflict] = useState<{ mine: string; serverHash: string } | null>(null)
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [showLeft, setShowLeft] = useState(true)
   const [showRight, setShowRight] = useState(true)
   const [overlay, setOverlay] = useState<Overlay>(null)
+  const [theme, setTheme] = useState<Theme>(readTheme)
 
+  const editorRef = useRef<EditorHandle | null>(null)
   const tree = useMemo(() => buildTree(files), [files])
+
+  // Тему держим на корне документа — токены переключаются сами.
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try {
+      localStorage.setItem(THEME_KEY, theme)
+    } catch {
+      // приватное окно — просто не запомним
+    }
+  }, [theme])
 
   const loadTree = useCallback(async () => {
     try {
@@ -90,17 +126,87 @@ export default function App() {
     }
   }, [])
 
-  const open = useCallback(async (p: string) => {
-    setPath(p)
-    setOverlay(null)
+  const open = useCallback(
+    async (p: string) => {
+      if (dirty && !confirm('Есть несохранённые правки. Уйти и потерять их?')) return
+      setPath(p)
+      setOverlay(null)
+      setMode('read')
+      setDirty(false)
+      setConflict(null)
+      try {
+        setNote(await api.note(p))
+        setError(null)
+      } catch (e) {
+        setNote(null)
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [dirty],
+  )
+
+  // Сохранение. Конфликт не молчаливый: сервер ничего не перезаписал,
+  // и пользователь решает, что делать со своей версией.
+  const save = useCallback(async () => {
+    const ed = editorRef.current
+    if (!ed || !note || saving) return
+    const text = ed.getValue()
+    if (text === note.content) {
+      setDirty(false)
+      return
+    }
+
+    setSaving(true)
     try {
-      setNote(await api.note(p))
-      setError(null)
+      const res = await api.save(note.path, text, note.hash)
+      setNote({ ...note, content: text, hash: res.hash, seq: res.seq })
+      setDirty(false)
+      setConflict(null)
+      setSyncedAt(Date.now())
+      void loadTree()
     } catch (e) {
-      setNote(null)
+      if (e instanceof ConflictError) {
+        setConflict({ mine: text, serverHash: e.serverHash })
+      } else {
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    } finally {
+      setSaving(false)
+    }
+  }, [note, saving, loadTree])
+
+  // Разрешение конфликта: своя версия уходит отдельным файлом,
+  // ровно как это делает демон на диске.
+  const saveAsCopy = useCallback(async () => {
+    if (!note || !conflict) return
+    const stamp = new Date()
+      .toISOString()
+      .slice(0, 16)
+      .replace('T', ' ')
+    const copyPath = note.path.replace(/(\.md)?$/i, ` (конфликт, браузер, ${stamp})$1`)
+    try {
+      await api.save(copyPath, conflict.mine, '')
+      setConflict(null)
+      setDirty(false)
+      await loadTree()
+      await open(copyPath)
+    } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [])
+  }, [note, conflict, loadTree, open])
+
+  const reloadFromServer = useCallback(async () => {
+    if (!path) return
+    setConflict(null)
+    setDirty(false)
+    try {
+      const fresh = await api.note(path)
+      setNote(fresh)
+      editorRef.current?.setValue(fresh.content)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [path])
 
   // Первая загрузка и живой поток изменений.
   useEffect(() => {
@@ -116,12 +222,15 @@ export default function App() {
     return close
   }, [loadTree])
 
-  // Открытая заметка обновляется, когда её версия уехала вперёд.
+  // Заметка обновляется, когда её версия уехала вперёд — но не поверх
+  // несохранённых правок.
   useEffect(() => {
-    if (!path) return
+    if (!path || dirty || mode === 'edit') return
     const meta = files.find((f) => f.path === path)
-    if (meta && note && meta.hash !== note.hash) void open(path)
-  }, [files, path, note, open])
+    if (meta && note && meta.hash !== note.hash) {
+      void api.note(path).then(setNote).catch(() => undefined)
+    }
+  }, [files, path, note, dirty, mode])
 
   // Раскрываем ветки до выбранного файла.
   useEffect(() => {
@@ -153,26 +262,56 @@ export default function App() {
         setOverlay('search')
       } else if (k === 'e') {
         e.preventDefault()
-        setMode((m) => (m === 'read' ? 'source' : 'read'))
+        setMode((m) => (m === 'read' ? 'edit' : 'read'))
+      } else if (k === 's') {
+        e.preventDefault()
+        void save()
       } else if (k === '\\') {
         e.preventDefault()
         setShowLeft((v) => !v)
       } else if (k === '.') {
         e.preventDefault()
         setShowRight((v) => !v)
+      } else if (k === 'l' && e.shiftKey) {
+        e.preventDefault()
+        setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [save])
+
+  // Уход со страницы с несохранённым текстом.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
+
+  // Выход из режима правки сохраняет молча — терять текст нельзя.
+  useEffect(() => {
+    if (mode === 'read' && dirty) void save()
+  }, [mode, dirty, save])
 
   const bodyClass = ['body', showLeft ? '' : 'no-left', showRight ? '' : 'no-right']
     .filter(Boolean)
     .join(' ')
 
+  const editable = note !== null && !note.binary
+
   return (
     <div className="app">
-      <TopBar path={path} mode={mode} onMode={setMode} />
+      <TopBar
+        path={path}
+        mode={mode}
+        editable={editable}
+        dirty={dirty}
+        saving={saving}
+        theme={theme}
+        onMode={setMode}
+        onTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+      />
 
       <div className={bodyClass}>
         <nav className="panel panel-l">
@@ -196,15 +335,26 @@ export default function App() {
         </nav>
 
         <main className="main">
+          {conflict && (
+            <ConflictBar onReload={reloadFromServer} onCopy={saveAsCopy} />
+          )}
           {note ? (
-            <NoteView note={note} mode={mode} files={files} onOpen={open} />
+            <NoteView
+              note={note}
+              mode={mode}
+              files={files}
+              onOpen={open}
+              onDirty={setDirty}
+              onSave={save}
+              editorRef={editorRef}
+            />
           ) : (
             <Welcome error={error} count={files.length} />
           )}
         </main>
 
         <aside className="panel panel-r">
-          <SidePanel note={note} onOpen={open} />
+          <SidePanel note={note} files={files} onOpen={open} />
         </aside>
       </div>
 
@@ -214,18 +364,25 @@ export default function App() {
         count={files.length}
         syncedAt={syncedAt}
         error={error}
+        dirty={dirty}
+        conflict={conflict !== null}
       />
 
       {overlay && (
-        <Palette
-          kind={overlay}
-          files={files}
-          onClose={() => setOverlay(null)}
-          onOpen={open}
-        />
+        <Palette kind={overlay} files={files} onClose={() => setOverlay(null)} onOpen={open} />
       )}
     </div>
   )
+}
+
+function readTheme(): Theme {
+  try {
+    const v = localStorage.getItem(THEME_KEY)
+    if (v === 'light' || v === 'dark') return v
+  } catch {
+    // приватное окно
+  }
+  return 'dark'
 }
 
 // ───────────────────────── шапка ─────────────────────────
@@ -233,11 +390,21 @@ export default function App() {
 function TopBar({
   path,
   mode,
+  editable,
+  dirty,
+  saving,
+  theme,
   onMode,
+  onTheme,
 }: {
   path: string | null
   mode: Mode
+  editable: boolean
+  dirty: boolean
+  saving: boolean
+  theme: Theme
   onMode: (m: Mode) => void
+  onTheme: () => void
 }) {
   const parts = path ? path.split('/') : []
   const file = parts.pop()
@@ -255,15 +422,36 @@ function TopBar({
         )}
       </span>
       <span className="top-right">
-        <button
-          className={`pill ${mode === 'source' ? 'is-on' : ''}`}
-          onClick={() => onMode(mode === 'read' ? 'source' : 'read')}
-        >
-          {mode === 'read' ? 'ЧТЕНИЕ' : 'ИСХОДНИК'}
+        {dirty && <span className="kbd unsaved">{saving ? 'сохраняю…' : 'не сохранено'}</span>}
+        {editable && (
+          <>
+            <button
+              className={`pill ${mode === 'edit' ? 'is-on' : ''}`}
+              onClick={() => onMode(mode === 'read' ? 'edit' : 'read')}
+            >
+              {mode === 'read' ? 'ЧТЕНИЕ' : 'ПРАВКА'}
+            </button>
+            <span className="kbd">⌘E</span>
+          </>
+        )}
+        <button className="pill" onClick={onTheme} title="Тема · ⌘⇧L">
+          {theme === 'dark' ? '墨' : '生'}
         </button>
-        <span className="kbd">⌘E</span>
       </span>
     </header>
+  )
+}
+
+function ConflictBar({ onReload, onCopy }: { onReload: () => void; onCopy: () => void }) {
+  return (
+    <div className="conflict-bar">
+      <b>Не сохранено: на сервере другая версия.</b> Твой текст цел и никуда
+      не делся — выбери, что с ним сделать.
+      <span className="conflict-actions">
+        <button onClick={onCopy}>Сохранить своей копией</button>
+        <button onClick={onReload}>Взять версию сервера</button>
+      </span>
+    </div>
   )
 }
 
@@ -323,18 +511,25 @@ function NoteView({
   mode,
   files,
   onOpen,
+  onDirty,
+  onSave,
+  editorRef,
 }: {
   note: Note
   mode: Mode
   files: FileMeta[]
   onOpen: (p: string) => void
+  onDirty: (v: boolean) => void
+  onSave: () => void
+  editorRef: React.MutableRefObject<EditorHandle | null>
 }) {
-  const ref = useRef<HTMLDivElement>(null)
+  const readRef = useRef<HTMLDivElement>(null)
+  const editRef = useRef<HTMLDivElement>(null)
   const html = useMemo(() => renderNote(note.content), [note.content])
 
-  // Проставляем якоря заголовкам и ловим клики по wiki-ссылкам.
+  // Якоря заголовкам, адреса вложениям, переходы по wiki-ссылкам.
   useEffect(() => {
-    const el = ref.current
+    const el = readRef.current
     if (!el || mode !== 'read') return
 
     const seen = new Map<string, number>()
@@ -345,19 +540,109 @@ function NoteView({
       h.id = n === 0 ? base : `${base}-${n}`
     })
 
+    // Картинки приходят с data-target вместо src: путь надо разрешить
+    // по дереву свода, как это делает Obsidian.
+    el.querySelectorAll('img.embed').forEach((img) => {
+      const target = img.getAttribute('data-target')
+      if (!target) return
+      const resolved = resolveTarget(files, target)
+      if (resolved) {
+        img.setAttribute('src', rawURL(resolved))
+      } else {
+        img.replaceWith(
+          Object.assign(document.createElement('span'), {
+            className: 'missing',
+            textContent: `нет вложения: ${target}`,
+          }),
+        )
+      }
+    })
+
     const onClick = (e: MouseEvent) => {
       const link = (e.target as HTMLElement).closest('a.wikilink')
       if (!link) return
       e.preventDefault()
       const target = link.getAttribute('data-target') ?? ''
-      const resolved = resolveLink(files, target)
+      const resolved = resolveTarget(files, target)
       if (resolved) onOpen(resolved)
     }
     el.addEventListener('click', onClick)
     return () => el.removeEventListener('click', onClick)
   }, [html, mode, files, onOpen])
 
+  // Редактор поднимаем лениво: в режиме чтения он не нужен.
+  useEffect(() => {
+    if (mode !== 'edit' || !editRef.current) return
+    let handle: EditorHandle | null = null
+    let cancelled = false
+
+    void import('./editor').then(({ createEditor }) => {
+      if (cancelled || !editRef.current) return
+      handle = createEditor(
+        editRef.current,
+        note.content,
+        () => onDirty(true),
+        onSave,
+      )
+      editorRef.current = handle
+      handle.view.focus()
+    })
+
+    return () => {
+      cancelled = true
+      handle?.destroy()
+      editorRef.current = null
+    }
+  }, [mode, note.path, note.content, onDirty, onSave, editorRef])
+
+  // Вставка картинки из буфера: файл уезжает в папку вложений,
+  // а в текст встаёт ссылка на него.
+  useEffect(() => {
+    if (mode !== 'edit') return
+    const onPaste = async (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items ?? []).find((i) =>
+        i.type.startsWith('image/'),
+      )
+      if (!item) return
+      const file = item.getAsFile()
+      if (!file) return
+      e.preventDefault()
+
+      const ext = (file.type.split('/')[1] ?? 'png').replace('jpeg', 'jpg')
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+      const name = `Вложения/Вставка ${stamp}.${ext}`
+      try {
+        await api.save(name, file, '')
+        editorRef.current?.insert(`![[${name}]]`)
+      } catch (err) {
+        alert(`Не смог сохранить картинку: ${err instanceof Error ? err.message : err}`)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [mode, editorRef])
+
   const date = new Date(note.mtime * 1000)
+
+  if (note.binary) {
+    return (
+      <article className="note">
+        <div className="note-head">
+          <h1>{displayName(note.path)}</h1>
+          <div className="note-meta">
+            {note.path} · {(note.size / 1024).toFixed(1)} КБ · seq {note.seq}
+          </div>
+        </div>
+        {isImage(note.path) ? (
+          <img className="attachment" src={rawURL(note.path)} alt={note.path} />
+        ) : (
+          <p className="empty-note">
+            Вложение. <a href={rawURL(note.path)}>Открыть в новой вкладке</a>
+          </p>
+        )}
+      </article>
+    )
+  }
 
   return (
     <article className="note">
@@ -367,12 +652,21 @@ function NoteView({
           {note.path} · {(note.size / 1024).toFixed(1)} КБ · seq {note.seq} ·{' '}
           {date.toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })}
         </div>
+        {note.meta && Object.keys(note.meta).length > 0 && (
+          <div className="frontmatter">
+            {Object.entries(note.meta).map(([k, v]) => (
+              <span key={k}>
+                <i>{k}</i> {v}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {mode === 'read' ? (
-        <div className="md" ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+        <div className="md" ref={readRef} dangerouslySetInnerHTML={{ __html: html }} />
       ) : (
-        <pre className="source">{note.content}</pre>
+        <div className="editor" ref={editRef} />
       )}
     </article>
   )
@@ -390,7 +684,7 @@ function Welcome({ error, count }: { error: string | null; count: number }) {
         <p>
           Запусти демона, он зальёт файлы:
           <br />
-          <code>svod -vault ~/obsidian/Vk -server http://localhost:8080</code>
+          <code>make daemon VAULT=~/obsidian/Vk</code>
         </p>
       )}
     </div>
@@ -399,7 +693,32 @@ function Welcome({ error, count }: { error: string | null; count: number }) {
 
 // ───────────────────────── правая панель ─────────────────────────
 
-function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) => void }) {
+function SidePanel({
+  note,
+  files,
+  onOpen,
+}: {
+  note: Note | null
+  files: FileMeta[]
+  onOpen: (p: string) => void
+}) {
+  const [versions, setVersions] = useState<Version[]>([])
+
+  useEffect(() => {
+    if (!note) {
+      setVersions([])
+      return
+    }
+    let alive = true
+    void api
+      .history(note.path)
+      .then((r) => alive && setVersions(r.versions))
+      .catch(() => alive && setVersions([]))
+    return () => {
+      alive = false
+    }
+  }, [note?.path, note?.hash])
+
   if (!note) {
     return (
       <>
@@ -417,17 +736,19 @@ function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) =>
 
   return (
     <>
-      <div className="panel-section">
-        <p className="label">Структура</p>
-        <div className="outline">
-          {note.headings.length === 0 && <span className="empty">заголовков нет</span>}
-          {note.headings.map((h, i) => (
-            <button key={`${h.id}-${i}`} className={`h${h.level}`} onClick={() => scrollTo(h.id)}>
-              {h.text}
-            </button>
-          ))}
+      {!note.binary && (
+        <div className="panel-section">
+          <p className="label">Структура</p>
+          <div className="outline">
+            {note.headings.length === 0 && <span className="empty">заголовков нет</span>}
+            {note.headings.map((h, i) => (
+              <button key={`${h.id}-${i}`} className={`h${h.level}`} onClick={() => scrollTo(h.id)}>
+                {h.text}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="panel-section">
         <p className="label">Ссылки сюда · {note.backlinks.length}</p>
@@ -441,13 +762,43 @@ function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) =>
         </div>
       </div>
 
+      {!note.binary && (
+        <div className="panel-section">
+          <p className="label">Теги · {note.tags.length}</p>
+          <div className="tags">
+            {note.tags.length === 0 && <span className="empty">нет</span>}
+            {note.tags.map((t) => (
+              <span key={t}>#{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="panel-section">
-        <p className="label">Теги · {note.tags.length}</p>
-        <div className="tags">
-          {note.tags.length === 0 && <span className="empty">нет</span>}
-          {note.tags.map((t) => (
-            <span key={t}>#{t}</span>
+        <p className="label">История · {versions.length}</p>
+        <div className="history">
+          {versions.length === 0 && <span className="empty">одна версия</span>}
+          {versions.map((v) => (
+            <div key={v.seq} className={v.hash === note.hash ? 'is-current' : ''}>
+              <span className="seq">seq {v.seq}</span>
+              <span className="when">
+                {new Date(v.at * 1000).toLocaleString('ru-RU', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
+              </span>
+              <span className="dev">{v.device}</span>
+            </div>
           ))}
+        </div>
+      </div>
+
+      <div className="panel-section">
+        <p className="label">Свод</p>
+        <div className="history">
+          <div>
+            <span className="dev">{files.length} файлов</span>
+          </div>
         </div>
       </div>
     </>
@@ -462,12 +813,16 @@ function StatusBar({
   count,
   syncedAt,
   error,
+  dirty,
+  conflict,
 }: {
   online: boolean
   seq: number
   count: number
   syncedAt: number
   error: string | null
+  dirty: boolean
+  conflict: boolean
 }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -475,12 +830,21 @@ function StatusBar({
     return () => window.clearInterval(id)
   }, [])
 
-  const dot = error ? 'danger' : online ? 'ok' : ''
-  const text = error
-    ? 'ошибка связи'
-    : online
-      ? `синхронизировано · ${ago(syncedAt)}`
-      : 'офлайн · переподключаюсь'
+  let dot = ''
+  let text = 'офлайн · переподключаюсь'
+  if (conflict) {
+    dot = 'danger'
+    text = 'конфликт — версия не сохранена'
+  } else if (error) {
+    dot = 'danger'
+    text = 'ошибка связи'
+  } else if (dirty) {
+    dot = 'warn'
+    text = 'есть несохранённые правки'
+  } else if (online) {
+    dot = 'ok'
+    text = `синхронизировано · ${ago(syncedAt)}`
+  }
 
   return (
     <footer className="status">
@@ -493,6 +857,7 @@ function StatusBar({
       <span className="push">
         <span>⌘K переход</span>
         <span>⌘⇧F поиск</span>
+        <span>⌘S сохранить</span>
       </span>
     </footer>
   )
@@ -525,7 +890,6 @@ function Palette({
   const [active, setActive] = useState(0)
   const [busy, setBusy] = useState(false)
 
-  // Поиск по содержимому ходит на сервер, переход по именам — локальный.
   useEffect(() => {
     if (kind !== 'search') return
     const query = q.trim()
@@ -550,9 +914,7 @@ function Palette({
   const local = useMemo(() => {
     if (kind !== 'files') return []
     const needle = q.trim().toLowerCase()
-    const list = needle
-      ? files.filter((f) => f.path.toLowerCase().includes(needle))
-      : files.slice()
+    const list = needle ? files.filter((f) => f.path.toLowerCase().includes(needle)) : files.slice()
     return list.slice(0, 50)
   }, [files, q, kind])
 
@@ -618,6 +980,10 @@ function Palette({
 function highlight(snippet: string) {
   const parts = snippet.split(/(\[[^\]]*\])/g)
   return parts.map((p, i) =>
-    p.startsWith('[') && p.endsWith(']') ? <mark key={i}>{p.slice(1, -1)}</mark> : <span key={i}>{p}</span>,
+    p.startsWith('[') && p.endsWith(']') ? (
+      <mark key={i}>{p.slice(1, -1)}</mark>
+    ) : (
+      <span key={i}>{p}</span>
+    ),
   )
 }
