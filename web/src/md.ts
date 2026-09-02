@@ -6,10 +6,19 @@
 import MarkdownIt from 'markdown-it'
 import type { PluginSimple } from 'markdown-it'
 
-/** [[путь/файл]] и [[путь/файл|подпись]] */
+/**
+ * [[путь/файл]], [[путь/файл|подпись]] и ![[вложение.png]].
+ * Восклицательный знак впереди означает встраивание, а не ссылку.
+ */
 const wikilinks: PluginSimple = (md) => {
   md.inline.ruler.before('link', 'wikilink', (state, silent) => {
-    const start = state.pos
+    let start = state.pos
+    let embed = false
+    if (state.src.charCodeAt(start) === 0x21) {
+      // !
+      embed = true
+      start++
+    }
     if (state.src.charCodeAt(start) !== 0x5b) return false // [
     if (state.src.charCodeAt(start + 1) !== 0x5b) return false
 
@@ -25,16 +34,22 @@ const wikilinks: PluginSimple = (md) => {
       const label = (bar < 0 ? inner : inner.slice(bar + 1)).trim() || target
       const token = state.push('wikilink', '', 0)
       token.content = label
-      token.meta = { target }
+      token.meta = { target, embed }
     }
     state.pos = end + 2
     return true
   })
 
   md.renderer.rules.wikilink = (tokens, idx) => {
-    const t = tokens[idx]
-    const target = md.utils.escapeHtml((t.meta as { target: string }).target)
-    return `<a class="wikilink" data-target="${target}">${md.utils.escapeHtml(t.content)}</a>`
+    const tok = tokens[idx]
+    const { target, embed } = tok.meta as { target: string; embed: boolean }
+    const safe = md.utils.escapeHtml(target)
+    if (embed) {
+      // Настоящий адрес подставит страница: путь надо сперва разрешить
+      // по дереву свода.
+      return `<img class="embed" data-target="${safe}" alt="${md.utils.escapeHtml(tok.content)}">`
+    }
+    return `<a class="wikilink" data-target="${safe}">${md.utils.escapeHtml(tok.content)}</a>`
   }
 }
 
@@ -90,6 +105,22 @@ const tasklists: PluginSimple = (md) => {
   })
 }
 
+/** Обычные картинки markdown тоже указывают на файлы свода. */
+const images: PluginSimple = (md) => {
+  const base = md.renderer.rules.image
+  md.renderer.rules.image = (tokens, idx, opts, env, self) => {
+    const tok = tokens[idx]
+    const src = tok.attrGet('src') ?? ''
+    if (!/^(https?:|data:|\/)/.test(src)) {
+      // Относительный путь — пусть страница разрешит его по дереву.
+      tok.attrSet('data-target', decodeURIComponent(src))
+      tok.attrSet('src', '')
+      tok.attrJoin('class', 'embed')
+    }
+    return base ? base(tokens, idx, opts, env, self) : self.renderToken(tokens, idx, opts)
+  }
+}
+
 const md = new MarkdownIt({
   html: false, // содержимое свода не доверяем как HTML
   linkify: true,
@@ -99,14 +130,23 @@ const md = new MarkdownIt({
   .use(wikilinks)
   .use(tags)
   .use(tasklists)
+  .use(images)
 
 /**
- * Рендер заметки. Первый H1 выбрасываем: он уже показан в шапке,
- * иначе заголовок дублируется.
+ * Рендер заметки.
+ *
+ * Frontmatter и первый H1 выбрасываем: и то и другое уже показано
+ * в шапке заметки, иначе задваивается.
  */
 export function renderNote(source: string): string {
-  const withoutTitle = source.replace(/^﻿?\s*#\s+[^\n]*\n?/, '')
+  const withoutMeta = source.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '')
+  const withoutTitle = withoutMeta.replace(/^﻿?\s*#\s+[^\n]*\n?/, '')
   return md.render(withoutTitle)
+}
+
+/** Есть ли у заметки frontmatter — чтобы не резать первую строку зря. */
+export function stripFrontmatter(source: string): string {
+  return source.replace(/^﻿?---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, '')
 }
 
 /** Заголовки для якорей в оглавлении. */

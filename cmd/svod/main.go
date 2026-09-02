@@ -32,7 +32,7 @@ func main() {
 		device = flag.String("device", env("SVOD_DEVICE", hostname()), "имя устройства для истории версий")
 		once   = flag.Bool("once", false, "синхронизировать один раз и выйти")
 		status = flag.Bool("status", false, "показать состояние и выйти")
-		exts   = flag.String("ext", ".md", "расширения через запятую; пусто — все файлы")
+		exts   = flag.String("ext", local.DefaultExts, "расширения через запятую; пусто — все файлы")
 	)
 	flag.Parse()
 

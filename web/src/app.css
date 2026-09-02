@@ -323,3 +323,83 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ───────────── Правка ───────────── */
+
+.editor { max-width: none; height: calc(100vh - var(--bar-top) - var(--bar-status) - 130px); }
+.editor .cm-editor { height: 100%; }
+
+.kbd.unsaved { color: var(--warn); }
+
+.conflict-bar {
+  margin: 0;
+  padding: 12px 40px 14px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--danger);
+  color: var(--fg-dim);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.conflict-bar b { color: var(--danger); font-weight: 600; }
+.conflict-actions { display: flex; gap: 8px; margin-top: 10px; }
+.conflict-actions button {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  color: var(--fg);
+  font-size: 13px;
+}
+.conflict-actions button:hover { background: var(--bg-active); border-color: var(--accent); }
+
+/* ───────────── Frontmatter и вложения ───────────── */
+
+.frontmatter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+}
+.frontmatter i { color: var(--fg-faint); font-style: normal; }
+
+.md img.embed,
+.attachment {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 16px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.md .missing {
+  display: inline-block;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--danger);
+  border: 1px dashed var(--danger);
+  border-radius: var(--radius);
+  padding: 2px 7px;
+}
+.empty-note { color: var(--fg-dim); font-size: 14.5px; }
+.empty-note a { color: var(--accent); }
+
+/* ───────────── История ───────────── */
+
+.history { padding: 0 12px; font-size: 12px; line-height: 1.5; }
+.history div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  color: var(--fg-dim);
+  border-bottom: 1px solid var(--line);
+}
+.history div:last-child { border-bottom: 0; }
+.history .is-current { color: var(--fg); box-shadow: inset 2px 0 0 var(--accent); padding-left: 8px; margin-left: -8px; }
+.history .seq { font-family: var(--f-mono); font-size: 11px; color: var(--fg-faint); flex: none; }
+.history .when { font-family: var(--f-mono); font-size: 11px; }
+.history .dev { margin-left: auto; color: var(--fg-faint); flex: none; }

@@ -148,10 +148,14 @@ func (s *Store) Put(path string, content []byte, baseHash, device string) (proto
 		return proto.PutResult{}, err
 	}
 
-	parsed := index.Parse(content)
-	title := parsed.Title
-	if title == "" {
-		title = index.TitleFromPath(path)
+	// Вложения не разбираем: индексировать в картинке нечего.
+	var parsed index.Parsed
+	title := index.TitleFromPath(path)
+	if index.IsNote(path) {
+		parsed = index.Parse(content)
+		if parsed.Title != "" {
+			title = parsed.Title
+		}
 	}
 
 	tx, err := s.db.Begin()
@@ -180,7 +184,7 @@ func (s *Store) Put(path string, content []byte, baseHash, device string) (proto
 		return proto.PutResult{}, err
 	}
 
-	if err := reindex(tx, s.fts, path, title, parsed); err != nil {
+	if err := reindex(tx, s.fts && index.IsNote(path), path, title, parsed); err != nil {
 		return proto.PutResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -302,6 +306,14 @@ func (s *Store) Note(path string) (proto.Note, error) {
 		return n, err
 	}
 
+	if !index.IsNote(path) {
+		// У вложения нет содержимого для показа — только карточка.
+		n.Binary = true
+		n.Headings, n.Tags, n.Links, n.Backlinks = nil, nil, nil, nil
+		n.Backlinks, err = s.Backlinks(path)
+		return n, err
+	}
+
 	content, err := s.Blob(n.Hash)
 	if err != nil {
 		return n, err
@@ -312,6 +324,8 @@ func (s *Store) Note(path string) (proto.Note, error) {
 	n.Headings = parsed.Headings
 	n.Tags = parsed.Tags
 	n.Links = parsed.Links
+	n.Aliases = parsed.Aliases
+	n.Meta = parsed.Frontmatter
 
 	n.Backlinks, err = s.Backlinks(path)
 	return n, err
@@ -405,6 +419,49 @@ func (s *Store) History(path string, limit int) ([]proto.Version, error) {
 		}
 		v.Deleted = del == 1
 		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// Tags отдаёт все теги свода с числом заметок на каждый.
+func (s *Store) Tags() (map[string]int, error) {
+	rows, err := s.db.Query(`SELECT t.tag, COUNT(DISTINCT t.path)
+		FROM tags t JOIN files f ON f.path = t.path AND f.deleted = 0
+		GROUP BY t.tag ORDER BY t.tag`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[string]int{}
+	for rows.Next() {
+		var tag string
+		var n int
+		if err := rows.Scan(&tag, &n); err != nil {
+			return nil, err
+		}
+		out[tag] = n
+	}
+	return out, rows.Err()
+}
+
+// ByTag — пути заметок с этим тегом.
+func (s *Store) ByTag(tag string) ([]string, error) {
+	rows, err := s.db.Query(`SELECT DISTINCT t.path FROM tags t
+		JOIN files f ON f.path = t.path AND f.deleted = 0
+		WHERE t.tag = ? ORDER BY t.path`, tag)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }
