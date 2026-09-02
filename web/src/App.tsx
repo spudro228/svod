@@ -92,7 +92,10 @@ export default function App() {
   const [path, setPath] = useState<string | null>(null)
   const [note, setNote] = useState<Note | null>(null)
   const [mode, setMode] = useState<Mode>('read')
-  const [dirty, setDirty] = useState(false)
+  // Черновик живёт здесь, а не внутри редактора: при выходе из режима
+  // правки React уничтожает редактор раньше, чем успевает сработать
+  // сохранение, и текст было бы некому спасти.
+  const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [conflict, setConflict] = useState<{ mine: string; serverHash: string } | null>(null)
 
@@ -104,6 +107,15 @@ export default function App() {
 
   const editorRef = useRef<EditorHandle | null>(null)
   const tree = useMemo(() => buildTree(files), [files])
+
+  const dirty = note !== null && draft !== null && draft !== note.content
+
+  // Актуальное значение в ссылке: иначе open() замыкает состояние того
+  // рендера, в котором был создан, и спрашивает про правки, которых уже нет.
+  const dirtyRef = useRef(dirty)
+  useEffect(() => {
+    dirtyRef.current = dirty
+  })
 
   // Тему держим на корне документа — токены переключаются сами.
   useEffect(() => {
@@ -127,12 +139,14 @@ export default function App() {
   }, [])
 
   const open = useCallback(
-    async (p: string) => {
-      if (dirty && !confirm('Есть несохранённые правки. Уйти и потерять их?')) return
+    async (p: string, force = false) => {
+      if (!force && dirtyRef.current && !confirm('Есть несохранённые правки. Уйти и потерять их?')) {
+        return
+      }
       setPath(p)
       setOverlay(null)
       setMode('read')
-      setDirty(false)
+      setDraft(null)
       setConflict(null)
       try {
         setNote(await api.note(p))
@@ -142,25 +156,21 @@ export default function App() {
         setError(e instanceof Error ? e.message : String(e))
       }
     },
-    [dirty],
+    [],
   )
 
   // Сохранение. Конфликт не молчаливый: сервер ничего не перезаписал,
   // и пользователь решает, что делать со своей версией.
   const save = useCallback(async () => {
-    const ed = editorRef.current
-    if (!ed || !note || saving) return
-    const text = ed.getValue()
-    if (text === note.content) {
-      setDirty(false)
-      return
-    }
+    if (!note || saving) return
+    const text = draft
+    if (text === null || text === note.content) return
 
     setSaving(true)
     try {
       const res = await api.save(note.path, text, note.hash)
-      setNote({ ...note, content: text, hash: res.hash, seq: res.seq })
-      setDirty(false)
+      setNote((n) => (n ? { ...n, content: text, hash: res.hash, seq: res.seq } : n))
+      setDraft(null)
       setConflict(null)
       setSyncedAt(Date.now())
       void loadTree()
@@ -173,7 +183,7 @@ export default function App() {
     } finally {
       setSaving(false)
     }
-  }, [note, saving, loadTree])
+  }, [note, draft, saving, loadTree])
 
   // Разрешение конфликта: своя версия уходит отдельным файлом,
   // ровно как это делает демон на диске.
@@ -187,9 +197,9 @@ export default function App() {
     try {
       await api.save(copyPath, conflict.mine, '')
       setConflict(null)
-      setDirty(false)
+      setDraft(null)
       await loadTree()
-      await open(copyPath)
+      await open(copyPath, true)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -198,7 +208,7 @@ export default function App() {
   const reloadFromServer = useCallback(async () => {
     if (!path) return
     setConflict(null)
-    setDirty(false)
+    setDraft(null)
     try {
       const fresh = await api.note(path)
       setNote(fresh)
@@ -343,8 +353,9 @@ export default function App() {
               note={note}
               mode={mode}
               files={files}
+              initial={draft ?? note.content}
               onOpen={open}
-              onDirty={setDirty}
+              onChange={setDraft}
               onSave={save}
               editorRef={editorRef}
             />
@@ -354,7 +365,7 @@ export default function App() {
         </main>
 
         <aside className="panel panel-r">
-          <SidePanel note={note} files={files} onOpen={open} />
+          <SidePanel note={note} onOpen={open} />
         </aside>
       </div>
 
@@ -510,22 +521,31 @@ function NoteView({
   note,
   mode,
   files,
+  initial,
   onOpen,
-  onDirty,
+  onChange,
   onSave,
   editorRef,
 }: {
   note: Note
   mode: Mode
   files: FileMeta[]
+  initial: string
   onOpen: (p: string) => void
-  onDirty: (v: boolean) => void
+  onChange: (text: string) => void
   onSave: () => void
   editorRef: React.MutableRefObject<EditorHandle | null>
 }) {
   const readRef = useRef<HTMLDivElement>(null)
   const editRef = useRef<HTMLDivElement>(null)
   const html = useMemo(() => renderNote(note.content), [note.content])
+
+  // Свежие обработчики держим в ссылках, чтобы редактор не пересоздавался
+  // на каждое сохранение: пересоздание сбрасывает курсор и историю отмен.
+  const latest = useRef({ initial, onChange, onSave })
+  useEffect(() => {
+    latest.current = { initial, onChange, onSave }
+  })
 
   // Якоря заголовкам, адреса вложениям, переходы по wiki-ссылкам.
   useEffect(() => {
@@ -571,6 +591,7 @@ function NoteView({
   }, [html, mode, files, onOpen])
 
   // Редактор поднимаем лениво: в режиме чтения он не нужен.
+  // Пересоздаём только при смене режима или заметки.
   useEffect(() => {
     if (mode !== 'edit' || !editRef.current) return
     let handle: EditorHandle | null = null
@@ -580,9 +601,9 @@ function NoteView({
       if (cancelled || !editRef.current) return
       handle = createEditor(
         editRef.current,
-        note.content,
-        () => onDirty(true),
-        onSave,
+        latest.current.initial,
+        (text) => latest.current.onChange(text),
+        () => latest.current.onSave(),
       )
       editorRef.current = handle
       handle.view.focus()
@@ -593,7 +614,7 @@ function NoteView({
       handle?.destroy()
       editorRef.current = null
     }
-  }, [mode, note.path, note.content, onDirty, onSave, editorRef])
+  }, [mode, note.path, editorRef])
 
   // Вставка картинки из буфера: файл уезжает в папку вложений,
   // а в текст встаёт ссылка на него.
@@ -693,15 +714,7 @@ function Welcome({ error, count }: { error: string | null; count: number }) {
 
 // ───────────────────────── правая панель ─────────────────────────
 
-function SidePanel({
-  note,
-  files,
-  onOpen,
-}: {
-  note: Note | null
-  files: FileMeta[]
-  onOpen: (p: string) => void
-}) {
+function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) => void }) {
   const [versions, setVersions] = useState<Version[]>([])
 
   useEffect(() => {
@@ -793,14 +806,6 @@ function SidePanel({
         </div>
       </div>
 
-      <div className="panel-section">
-        <p className="label">Свод</p>
-        <div className="history">
-          <div>
-            <span className="dev">{files.length} файлов</span>
-          </div>
-        </div>
-      </div>
     </>
   )
 }

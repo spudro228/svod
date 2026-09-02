@@ -261,7 +261,7 @@ func (s *Server) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.st.Put(p, body, baseHash(r), r.Header.Get(proto.HeaderDevice))
+	res, err := s.st.Put(p, body, baseHash(r), device(r))
 	if errors.Is(err, store.ErrConflict) {
 		s.conflict(w, p)
 		return
@@ -276,7 +276,7 @@ func (s *Server) put(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) del(w http.ResponseWriter, r *http.Request) {
 	p := pathParam(r)
-	res, err := s.st.Delete(p, baseHash(r), r.Header.Get(proto.HeaderDevice))
+	res, err := s.st.Delete(p, baseHash(r), device(r))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "нечего удалять: "+p)
@@ -421,6 +421,11 @@ func pathParam(r *http.Request) string {
 		return dec
 	}
 	return raw
+}
+
+// device читает имя машины, приславшей изменение.
+func device(r *http.Request) string {
+	return proto.DecodeDevice(r.Header.Get(proto.HeaderDevice))
 }
 
 // baseHash читает If-Match. Отсутствие заголовка означает «файла ещё нет».

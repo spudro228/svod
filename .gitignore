@@ -4,3 +4,7 @@ web/node_modules/
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
 .DS_Store
+/.e2e-data/
+web/test-results/
+web/playwright-report/
+web/blob-report/

@@ -67,7 +67,7 @@ export type EditorHandle = {
 export function createEditor(
   parent: HTMLElement,
   doc: string,
-  onChange: () => void,
+  onChange: (text: string) => void,
   onSave: () => void,
 ): EditorHandle {
   const saveKey: Extension = keymap.of([
@@ -97,7 +97,9 @@ export function createEditor(
         theme,
         placeholder('Пустая заметка'),
         EditorView.updateListener.of((u) => {
-          if (u.docChanged) onChange()
+          // Текст отдаём наружу целиком: он должен пережить пересоздание
+          // редактора, иначе при выходе из режима правки его некому спасти.
+          if (u.docChanged) onChange(u.state.doc.toString())
         }),
       ],
     }),

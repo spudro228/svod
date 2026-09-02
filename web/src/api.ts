@@ -102,7 +102,11 @@ export const api = {
    * Несовпадение поднимает ConflictError: сервер ничего не перезаписал.
    */
   async save(path: string, content: BodyInit, baseHash: string): Promise<PutResult> {
-    const headers: Record<string, string> = { 'X-Svod-Device': 'браузер' }
+    // Заголовки HTTP только Latin-1: кириллица в значении роняет fetch
+    // с TypeError ещё до отправки. Сервер разбирает кодирование обратно.
+    const headers: Record<string, string> = {
+      'X-Svod-Device': encodeURIComponent('браузер'),
+    }
     if (baseHash) headers['If-Match'] = baseHash
 
     const res = await fetch(`/api/v1/files/${encodePath(path)}`, {
