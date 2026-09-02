@@ -1,0 +1,1384 @@
+<title>Свод</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   ТОКЕНЫ СТРАНИЦЫ (сама спека — не приложение)
+   Светлая палитра объявлена целиком в голом :root.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --paper:        #F5F2E8;
+  --surface:      #FBF9F2;
+  --surface-2:    #EAE5D6;
+  --ink:          #1B2023;
+  --ink-2:        #55606A;
+  --ink-3:        #6E7880;
+  --rule:         #DDD7C6;
+  --rule-2:       #C4BCA6;
+  --accent:       #1F4B73;
+  --accent-soft:  #E2E7EC;
+  --sig:          #9E3D3F;
+  --sig-soft:     #F2E4E2;
+
+  --measure: 700px;
+  --f-body: "Golos Text", "Helvetica Neue", Arial, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --f-jp: "Hiragino Sans", "Yu Gothic", "Noto Sans JP", "IBM Plex Mono", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:       #17191A;
+    --surface:     #1E2224;
+    --surface-2:   #262B2E;
+    --ink:         #EDEAE0;
+    --ink-2:       #A6ABA8;
+    --ink-3:       #7A8388;
+    --rule:        #2A2F32;
+    --rule-2:      #3B4247;
+    --accent:      #8FB4D9;
+    --accent-soft: #1C2A36;
+    --sig:         #D2635F;
+    --sig-soft:    #2E1F1E;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:       #17191A;
+  --surface:     #1E2224;
+  --surface-2:   #262B2E;
+  --ink:         #EDEAE0;
+  --ink-2:       #A6ABA8;
+  --ink-3:       #7A8388;
+  --rule:        #2A2F32;
+  --rule-2:      #3B4247;
+  --accent:      #8FB4D9;
+  --accent-soft: #1C2A36;
+  --sig:         #D2635F;
+  --sig-soft:    #2E1F1E;
+}
+
+/* ───────────── Каркас ───────────── */
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.doc {
+  display: grid;
+  grid-template-columns:
+    [full-start] minmax(20px, 1fr)
+    [wide-start] minmax(0, 190px)
+    [text-start] minmax(0, var(--measure)) [text-end]
+    minmax(0, 190px) [wide-end]
+    minmax(20px, 1fr) [full-end];
+  row-gap: 0;
+  padding: 0 0 96px;
+}
+.doc > * { grid-column: text; }
+.doc > .wide { grid-column: wide; }
+
+/* ───────────── Титульный блок ───────────── */
+
+.masthead {
+  grid-column: wide;
+  padding: 56px 0 0;
+}
+.eyebrow {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.masthead h1 {
+  font-size: clamp(38px, 6vw, 58px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  margin: 0;
+  text-wrap: balance;
+}
+.masthead .standfirst {
+  font-size: 19px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 620px;
+  margin: 18px 0 0;
+  text-wrap: pretty;
+}
+
+.titleblock {
+  grid-column: wide;
+  margin: 40px 0 0;
+  border: 1px solid var(--rule-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.tb-cell {
+  padding: 12px 16px 13px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.tb-cell:last-child { border-right: 0; }
+.tb-k {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-bottom: 3px;
+}
+.tb-v {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.tb-v.is-live { color: var(--accent); }
+
+.toc {
+  grid-column: wide;
+  margin: 0;
+  border: 1px solid var(--rule-2);
+  border-top: 0;
+  padding: 18px 16px 20px;
+  background: var(--surface);
+}
+.toc-h {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 12px;
+}
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 5px 28px;
+}
+.toc-list a {
+  display: flex;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+}
+.toc-list a:hover { color: var(--accent); }
+.toc-num {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  min-width: 14px;
+  padding-top: 2px;
+}
+
+/* ───────────── Секции ───────────── */
+
+.sec-head {
+  grid-column: wide;
+  margin: 72px 0 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+.sec-num {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.sec-head h2 {
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: 1.15;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 38px 0 0;
+}
+
+p { margin: 14px 0 0; text-wrap: pretty; }
+p.lead { font-size: 17.5px; color: var(--ink-2); }
+p:first-of-type { margin-top: 22px; }
+
+ul.body-list, ol.body-list {
+  margin: 14px 0 0;
+  padding-left: 22px;
+}
+ul.body-list li, ol.body-list li { margin-top: 7px; }
+ul.body-list li::marker { color: var(--ink-3); }
+ol.body-list li::marker { color: var(--ink-3); font-family: var(--f-mono); font-size: 13px; }
+
+strong { font-weight: 600; }
+
+code {
+  font-family: var(--f-mono);
+  font-size: 0.86em;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+a { color: var(--accent); }
+
+/* ───────────── Блоки-примечания ───────────── */
+
+.note {
+  margin: 26px 0 0;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 14px 18px 16px;
+}
+.note-k {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+}
+.note p { margin: 0; font-size: 15px; }
+.note p + p { margin-top: 9px; }
+
+/* ───────────── Таблицы ───────────── */
+
+.table-wrap {
+  margin: 26px 0 0;
+  overflow-x: auto;
+  border: 1px solid var(--rule-2);
+}
+.wide .table-wrap { margin-top: 26px; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 560px;
+  font-size: 14.5px;
+}
+th {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left;
+  font-weight: 500;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--rule-2);
+  white-space: nowrap;
+}
+td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+  line-height: 1.45;
+}
+tr:last-child td { border-bottom: 0; }
+td.num {
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  width: 1%;
+}
+td.mono { font-family: var(--f-mono); font-size: 12.5px; }
+td.key { font-weight: 600; }
+td.cost { color: var(--ink-2); font-size: 13.5px; }
+.verb {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border: 1px solid var(--rule-2);
+  border-radius: 3px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+/* ───────────── Код ───────────── */
+
+.code {
+  margin: 24px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--rule-2);
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre;
+  color: var(--ink-2);
+}
+.code b { color: var(--ink); font-weight: 500; }
+.code i { color: var(--ink-3); font-style: normal; }
+
+/* ───────────── Рисунки ───────────── */
+
+figure { margin: 34px 0 0; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink); }
+figcaption {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  max-width: 700px;
+}
+.fig-label {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 12px;
+}
+.svg-scroll { overflow-x: auto; }
+.svg-scroll svg { min-width: 620px; }
+
+/* ───────────── Палитра приложения ───────────── */
+
+.swatches {
+  margin: 26px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 1px;
+  background: var(--rule-2);
+  border: 1px solid var(--rule-2);
+}
+.sw { background: var(--surface); padding: 0; }
+.sw-chip { height: 46px; border-bottom: 1px solid var(--rule); }
+.sw-meta { padding: 8px 10px 10px; }
+.sw-name {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink);
+  display: block;
+}
+.sw-hex {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.sw-jp {
+  font-family: var(--f-jp);
+  font-size: 12px;
+  color: var(--ink-2);
+  display: block;
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--rule);
+}
+.sw-jp em { font-style: normal; font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
+.sw-use { font-size: 12px; color: var(--ink-2); display: block; margin-top: 4px; line-height: 1.35; }
+
+/* ───────────── МАКЕТ ПРИЛОЖЕНИЯ (фиксированная тёмная тема) ───────────── */
+
+.screen-wrap { overflow-x: auto; margin: 0; }
+.screen {
+  --s-bg:        #12171A;
+  --s-panel:     #191F23;
+  --s-raised:    #212930;
+  --s-active:    #2A343D;
+  --s-line:      #242C32;
+  --s-line-2:    #37424B;
+  --s-fg:        #EDEAE2;
+  --s-dim:       #A2A9A8;
+  --s-faint:     #6E7A80;
+  --s-accent:    #4FB3BF;
+  --s-accent-bg: #17353B;
+  --s-ok:        #6FBE8E;
+  --s-warn:      #D9A441;
+  --s-danger:    #D2635F;
+  --s-tag:       #A99BD1;
+
+  min-width: 880px;
+  background: var(--s-bg);
+  color: var(--s-fg);
+  border: 1px solid var(--s-line-2);
+  border-radius: 5px;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.s-top {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--s-line);
+  background: var(--s-panel);
+}
+.s-crumb { font-family: var(--f-mono); font-size: 11.5px; color: var(--s-faint); }
+.s-crumb b { color: var(--s-fg); font-weight: 500; }
+.s-top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.s-mode {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--s-dim);
+  border: 1px solid var(--s-line-2);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+.s-kbd {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--s-faint);
+}
+
+.s-body { display: grid; grid-template-columns: 216px 1fr 236px; }
+
+.s-panel-l { border-right: 1px solid var(--s-line); background: var(--s-panel); padding: 12px 0 18px; }
+.s-panel-r { border-left: 1px solid var(--s-line); background: var(--s-panel); padding: 12px 0 18px; }
+
+.s-label {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--s-faint);
+  padding: 0 12px;
+  margin: 0 0 7px;
+}
+.s-label + .s-label { margin-top: 20px; }
+
+.s-row {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  color: var(--s-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.s-row.d1 { padding-left: 24px; }
+.s-row.d2 { padding-left: 36px; }
+.s-row.is-hover { background: var(--s-raised); color: var(--s-fg); }
+.s-row.is-active {
+  background: var(--s-active);
+  color: var(--s-fg);
+  box-shadow: inset 2px 0 0 var(--s-accent);
+}
+.s-caret { color: var(--s-faint); font-size: 9px; width: 8px; }
+
+.s-main { padding: 30px 40px 34px; min-width: 0; }
+.s-h1 { font-size: 23px; font-weight: 600; letter-spacing: -0.015em; margin: 0; line-height: 1.25; }
+.s-meta { font-size: 12.5px; color: var(--s-faint); margin: 8px 0 0; font-family: var(--f-mono); }
+.s-h2 { font-size: 17px; font-weight: 600; margin: 26px 0 0; letter-spacing: -0.01em; }
+.s-p { font-size: 14.5px; line-height: 1.7; color: var(--s-fg); margin: 10px 0 0; max-width: 62ch; }
+.s-ul { margin: 10px 0 0; padding-left: 20px; font-size: 14.5px; line-height: 1.7; }
+.s-ul li::marker { color: var(--s-faint); }
+.s-code {
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  background: var(--s-raised);
+  border: 1px solid var(--s-line);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--s-fg);
+}
+.s-link { color: var(--s-accent); text-decoration: none; border-bottom: 1px solid var(--s-accent-bg); }
+.s-tag { color: var(--s-tag); font-family: var(--f-mono); font-size: 12.5px; }
+.s-task { list-style: none; padding: 0; margin: 10px 0 0; font-size: 14.5px; }
+.s-task li { display: flex; gap: 9px; align-items: baseline; line-height: 1.7; }
+.s-box {
+  width: 12px; height: 12px; border: 1px solid var(--s-line-2);
+  border-radius: 3px; flex: none; transform: translateY(1px);
+}
+.s-box.on { background: var(--s-accent); border-color: var(--s-accent); }
+.s-done { color: var(--s-faint); }
+
+.s-out { padding: 0 12px; font-size: 12.5px; color: var(--s-dim); line-height: 1.9; }
+.s-out .cur { color: var(--s-fg); box-shadow: inset 2px 0 0 var(--s-accent); padding-left: 8px; margin-left: -8px; display: block; }
+.s-back { padding: 0 12px; font-size: 12.5px; line-height: 1.55; }
+.s-back div { color: var(--s-accent); margin-bottom: 8px; }
+.s-tags { padding: 0 12px; display: flex; flex-wrap: wrap; gap: 5px; }
+.s-tags span {
+  font-family: var(--f-mono); font-size: 11.5px; color: var(--s-tag);
+  border: 1px solid var(--s-line-2); border-radius: 4px; padding: 1px 6px;
+}
+
+.s-status {
+  height: 27px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-top: 1px solid var(--s-line);
+  background: var(--s-panel);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--s-faint);
+}
+.s-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.s-status .push { margin-left: auto; }
+
+.states {
+  margin: 26px 0 0;
+  border: 1px solid var(--rule-2);
+}
+.state-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+}
+.state-row:last-child { border-bottom: 0; }
+.state-row .s-dot { box-shadow: 0 0 0 3px var(--surface-2); }
+.state-row .txt { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); }
+.state-row .why { color: var(--ink-2); font-size: 13.5px; margin-left: auto; text-align: right; }
+
+/* ───────────── Список исключений ───────────── */
+
+.outlist { margin: 24px 0 0; border-top: 1px solid var(--rule); }
+.outrow {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.outrow .no {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--sig);
+  border: 1px solid var(--sig);
+  border-radius: 3px;
+  padding: 0 5px;
+  flex: none;
+}
+.outrow .what { font-weight: 500; flex: none; min-width: 210px; }
+.outrow .when { color: var(--ink-2); font-size: 14px; }
+
+/* ───────────── Этапы ───────────── */
+
+.stages { margin: 26px 0 0; }
+.stage {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  gap: 20px;
+  padding: 20px 0;
+  border-top: 1px solid var(--rule);
+}
+.stage:last-child { border-bottom: 1px solid var(--rule); }
+.stage-n {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  padding-top: 3px;
+}
+.stage h4 { font-size: 16px; font-weight: 600; margin: 0; }
+.stage p { margin: 7px 0 0; font-size: 14.5px; color: var(--ink-2); }
+.stage .check {
+  margin: 10px 0 0;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent);
+  padding: 7px 11px;
+  line-height: 1.55;
+}
+
+.colophon {
+  grid-column: wide;
+  margin: 80px 0 0;
+  padding-top: 20px;
+  border-top: 2px solid var(--ink);
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+}
+
+@media (max-width: 760px) {
+  body { font-size: 15.5px; }
+  .stage { grid-template-columns: 1fr; gap: 6px; }
+  .outrow { flex-wrap: wrap; }
+  .outrow .what { min-width: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+a:focus-visible, .toc-list a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+</style>
+
+<div class="doc">
+
+  <header class="masthead">
+    <p class="eyebrow">Техническая спецификация · v1.0 · решения закрыты</p>
+    <h1>Свод</h1>
+    <p class="standfirst">Личная замена Obsidian: markdown-файлы остаются на диске и правятся чем угодно, демон синхронизирует их с твоим сервером, браузер открывает тот же свод с любого устройства. Гит больше не нужен — версии хранит сервер.</p>
+  </header>
+
+  <div class="titleblock">
+    <div class="tb-cell"><span class="tb-k">Рабочее имя</span><span class="tb-v">svod</span></div>
+    <div class="tb-cell"><span class="tb-k">Зафиксировано</span><span class="tb-v">02.09.2026</span></div>
+    <div class="tb-cell"><span class="tb-k">Статус</span><span class="tb-v is-live">к реализации</span></div>
+    <div class="tb-cell"><span class="tb-k">Заменяет</span><span class="tb-v">Obsidian + git</span></div>
+    <div class="tb-cell"><span class="tb-k">Объём свода</span><span class="tb-v">225 .md</span></div>
+  </div>
+
+  <nav class="toc">
+    <p class="toc-h">Разделы</p>
+    <ul class="toc-list">
+      <li><a href="#s1"><span class="toc-num">1</span>Зафиксированные решения</a></li>
+      <li><a href="#s2"><span class="toc-num">2</span>Из чего состоит</a></li>
+      <li><a href="#s3"><span class="toc-num">3</span>Протокол синхронизации</a></li>
+      <li><a href="#s4"><span class="toc-num">4</span>Что легко забыть</a></li>
+      <li><a href="#s5"><span class="toc-num">5</span>API</a></li>
+      <li><a href="#s6"><span class="toc-num">6</span>Дизайн-система</a></li>
+      <li><a href="#s7"><span class="toc-num">7</span>Стек</a></li>
+      <li><a href="#s8"><span class="toc-num">8</span>Что не входит в v1</a></li>
+      <li><a href="#s9"><span class="toc-num">9</span>Этапы</a></li>
+    </ul>
+  </nav>
+
+  <!-- ═══════════════ 1 ═══════════════ -->
+
+  <div class="sec-head" id="s1">
+    <span class="sec-num">1</span>
+    <h2>Зафиксированные решения</h2>
+  </div>
+
+  <p class="lead">Девять развилок закрыты. У каждой указано, чем мы за неё платим — чтобы через месяц не пересматривать выбор, забыв, что цена была известна заранее.</p>
+
+  <div class="wide">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>№</th><th>Развилка</th><th>Решение</th><th>Чем платим</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="num">1</td><td class="key">Источник правды</td><td>Локальные <code>.md</code> на диске. Сервер вторичен.</td><td class="cost">Сервер не «чинит» испорченный файл — он честно повторит порчу.</td></tr>
+          <tr><td class="num">2</td><td class="key">Направление</td><td>Двустороннее. Браузер тоже пишет.</td><td class="cost">Три пишущих стороны вместо одной → нужен настоящий протокол с версиями.</td></tr>
+          <tr><td class="num">3</td><td class="key">Устройства</td><td>Две-три машины с демоном + браузер откуда угодно.</td><td class="cost">—</td></tr>
+          <tr><td class="num">4</td><td class="key">Конфликты</td><td>Побеждает последний, проигравший сохраняется рядом отдельным файлом.</td><td class="cost">Пару раз в год сводить руками. Взамен — ничего никогда не теряется.</td></tr>
+          <tr><td class="num">5</td><td class="key">История</td><td>Полная. Каждая версия адресуется по <code>sha256</code>.</td><td class="cost">Диск на сервере. Весь твой свод — единицы мегабайт, текст жмётся.</td></tr>
+          <tr><td class="num">6</td><td class="key">Хостинг</td><td>VPS в интернете, HTTPS + токен на устройство.</td><td class="cost">Заметки лежат на сервере открыто. Взамен сервер умеет искать и строить граф.</td></tr>
+          <tr><td class="num">7</td><td class="key">Редактор</td><td>По умолчанию чтение, правка по <code>⌘E</code>.</td><td class="cost">Нет обсидиановского live preview — разметка не растворяется по мере набора.</td></tr>
+          <tr><td class="num">8</td><td class="key">Внешний вид</td><td>Плотный dev-tool в три колонки, тёмная тема по умолчанию, традиционная японская палитра.</td><td class="cost">Не «уютный блокнот». Оптимизировано под навигацию по большому своду.</td></tr>
+          <tr><td class="num">9</td><td class="key">Объём v1</td><td>Синхронизация + wiki-links и бэклинки + поиск + теги.</td><td class="cost">Картинки, граф и мобильная вёрстка — после того, как ядро заработает.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">
+    <span class="note-k">Решение № 4 принято за тебя</span>
+    <p>Настоящее слияние текста (CRDT, как в Google Docs) — это месяцы работы ради ситуации «я правил один и тот же абзац на двух машинах одновременно». Для личного свода это не окупается.</p>
+    <p>Вместо этого: побеждает та версия, что пришла последней, а проигравшая ложится рядом файлом <code>… (конфликт, пк, 2026-09-02 14:05).md</code>. Так делает Syncthing, и за годы это ни разу не привело к потере данных — только к паре минут ручного сведения.</p>
+  </div>
+
+  <!-- ═══════════════ 2 ═══════════════ -->
+
+  <div class="sec-head" id="s2">
+    <span class="sec-num">2</span>
+    <h2>Из чего состоит</h2>
+  </div>
+
+  <p>Три части, но собираются в два исполняемых файла: веб-клиент вшивается прямо в бинарник сервера через <code>go:embed</code>, поэтому деплой — это скопировать один файл и перезапустить сервис.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Компонент</th><th>Что делает</th><th>Что хранит рядом с собой</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="key mono">svod</td>
+          <td>Демон и CLI на машине. Следит за папкой свода, считает хеши, гоняет изменения в обе стороны.</td>
+          <td class="mono">.svod/state.db<br><span style="color:var(--ink-3)">путь → хеш, last_seq</span></td>
+        </tr>
+        <tr>
+          <td class="key mono">svodd</td>
+          <td>Сервер на VPS. Присваивает порядок изменениям, хранит содержимое и историю, строит индекс, отдаёт API и веб-клиент.</td>
+          <td class="mono">meta.db · blobs/<br><span style="color:var(--ink-3)">SQLite + файлы по хешу</span></td>
+        </tr>
+        <tr>
+          <td class="key">веб-клиент</td>
+          <td>SPA: дерево, чтение, правка по <code>⌘E</code>, поиск, бэклинки.</td>
+          <td class="mono">—<br><span style="color:var(--ink-3)">ничего, всё с сервера</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <figure class="wide">
+    <p class="fig-label">Рис. 1 — Топология</p>
+    <div class="svg-scroll">
+      <svg viewBox="0 0 900 400" role="img" aria-label="Две машины с демоном и браузер обращаются к одному серверу на VPS; сервер хранит лог изменений, блобы и индекс">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+
+        <!-- Мак -->
+        <rect x="14" y="34" width="228" height="82" fill="none" stroke="currentColor" stroke-width="1.2"></rect>
+        <text x="28" y="58" font-family="Golos Text, sans-serif" font-size="14" font-weight="600" fill="currentColor">Рабочий мак</text>
+        <text x="28" y="79" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">~/obsidian/Vk</text>
+        <text x="28" y="99" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">демон svod</text>
+
+        <!-- ПК -->
+        <rect x="14" y="164" width="228" height="82" fill="none" stroke="currentColor" stroke-width="1.2"></rect>
+        <text x="28" y="188" font-family="Golos Text, sans-serif" font-size="14" font-weight="600" fill="currentColor">Домашний компьютер</text>
+        <text x="28" y="209" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">~/vault</text>
+        <text x="28" y="229" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">демон svod</text>
+
+        <!-- Браузер -->
+        <rect x="14" y="294" width="228" height="70" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 3"></rect>
+        <text x="28" y="318" font-family="Golos Text, sans-serif" font-size="14" font-weight="600" fill="currentColor">Браузер</text>
+        <text x="28" y="339" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">телефон, чужой ноут</text>
+        <text x="28" y="356" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor" opacity="0.62">файлов на диске нет</text>
+
+        <!-- Стрелки: мак -->
+        <line x1="242" y1="60" x2="612" y2="60" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="52" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">PUT /files · If-Match: base_hash</text>
+        <line x1="612" y1="92" x2="242" y2="92" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="110" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">WS: seq 1043 → GET /changes</text>
+
+        <!-- Стрелки: пк -->
+        <line x1="242" y1="190" x2="612" y2="190" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">тот же протокол</text>
+        <line x1="612" y1="222" x2="242" y2="222" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="240" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">GET /blob/&lt;sha256&gt;</text>
+
+        <!-- Стрелки: браузер -->
+        <line x1="242" y1="318" x2="612" y2="318" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="310" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">PUT /files при ⌘E</text>
+        <line x1="612" y1="348" x2="242" y2="348" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="427" y="366" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.75">GET /tree · /note · /search</text>
+
+        <!-- VPS -->
+        <rect x="614" y="34" width="272" height="330" fill="none" stroke="currentColor" stroke-width="2"></rect>
+        <text x="632" y="60" font-family="Golos Text, sans-serif" font-size="14" font-weight="600" fill="currentColor">VPS · svodd</text>
+        <line x1="614" y1="74" x2="886" y2="74" stroke="currentColor" stroke-width="1" opacity="0.35"></line>
+
+        <rect x="634" y="96" width="232" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity="0.55"></rect>
+        <text x="650" y="120" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Лог изменений</text>
+        <text x="650" y="141" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.62">монотонный seq 1 … 1043</text>
+
+        <rect x="634" y="180" width="232" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity="0.55"></rect>
+        <text x="650" y="204" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Блобы</text>
+        <text x="650" y="225" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.62">blobs/7c/1e9a… (вся история)</text>
+
+        <rect x="634" y="264" width="232" height="66" fill="none" stroke="currentColor" stroke-width="1" opacity="0.55"></rect>
+        <text x="650" y="288" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Индекс</text>
+        <text x="650" y="309" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.62">FTS5 · ссылки · теги</text>
+      </svg>
+    </div>
+    <figcaption>Сервер — единственная сторона, которая присваивает изменениям порядок. Демоны и браузер равноправны: все трое пишут через один эндпоинт с проверкой <code>base_hash</code>, и никто из них не считается «главным».</figcaption>
+  </figure>
+
+  <!-- ═══════════════ 3 ═══════════════ -->
+
+  <div class="sec-head" id="s3">
+    <span class="sec-num">3</span>
+    <h2>Протокол синхронизации</h2>
+  </div>
+
+  <p class="lead">Это ядро проекта. Веб-морду можно переписать за выходные, протокол — нет, поэтому он описан здесь до строчки.</p>
+
+  <h3>Четыре правила модели</h3>
+  <ol class="body-list">
+    <li><strong>Единица синхронизации — файл целиком.</strong> Не строки, не блоки, не абзацы. Изменил один символ — уехал весь файл. Заметки маленькие, это дешевле любой дельта-логики.</li>
+    <li><strong>Содержимое адресуется по <code>sha256</code>.</strong> Одинаковый текст — один блоб. Переименование файла не перезаливает содержимое, а история версий получается бесплатно как побочный эффект.</li>
+    <li><strong>У сервера один монотонный счётчик <code>seq</code>.</strong> Каждое принятое изменение получает следующий номер. Это и есть глобальный порядок событий — единственный в системе.</li>
+    <li><strong>Клиент помнит только две вещи:</strong> до какого <code>seq</code> он дочитал и карту «путь → хеш» на момент последней синхронизации. Всё в <code>.svod/state.db</code>.</li>
+  </ol>
+
+  <h3>Как проходит одно изменение</h3>
+
+  <figure class="wide">
+    <p class="fig-label">Рис. 2 — Правка на маке доезжает до домашнего компьютера</p>
+    <div class="svg-scroll">
+      <svg viewBox="0 0 940 480" role="img" aria-label="Последовательность: правка файла на маке, дебаунс, отправка на сервер с проверкой base_hash, присвоение seq, уведомление по WebSocket, скачивание изменений и атомарная запись на втором компьютере">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+
+        <!-- Заголовки дорожек -->
+        <text x="120" y="20" text-anchor="middle" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Мак</text>
+        <text x="420" y="20" text-anchor="middle" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">svodd на VPS</text>
+        <text x="700" y="20" text-anchor="middle" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Домашний ПК</text>
+        <text x="880" y="20" text-anchor="middle" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Браузер</text>
+
+        <!-- Дорожки -->
+        <line x1="120" y1="32" x2="120" y2="452" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" opacity="0.4"></line>
+        <line x1="420" y1="32" x2="420" y2="452" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" opacity="0.4"></line>
+        <line x1="700" y1="32" x2="700" y2="452" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" opacity="0.4"></line>
+        <line x1="880" y1="32" x2="880" y2="452" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" opacity="0.4"></line>
+
+        <!-- 1 -->
+        <rect x="24" y="46" width="192" height="26" fill="none" stroke="currentColor" stroke-width="1" opacity="0.7"></rect>
+        <text x="120" y="63" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">правка в любом редакторе</text>
+        <!-- 2 -->
+        <rect x="24" y="88" width="192" height="26" fill="none" stroke="currentColor" stroke-width="1" opacity="0.7"></rect>
+        <text x="120" y="105" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">дебаунс 500 мс → sha256</text>
+
+        <!-- 3 -->
+        <line x1="120" y1="148" x2="414" y2="148" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"></line>
+        <text x="267" y="140" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">PUT /files/…  If-Match: a3f9…</text>
+
+        <!-- 4 -->
+        <rect x="316" y="166" width="208" height="42" fill="none" stroke="currentColor" stroke-width="1" opacity="0.7"></rect>
+        <text x="420" y="182" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">хеш совпал → блоб сохранён</text>
+        <text x="420" y="199" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">seq = 1043, новый хеш 7c1e…</text>
+
+        <!-- 5 подтверждение -->
+        <line x1="414" y1="232" x2="126" y2="232" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"></line>
+        <text x="267" y="224" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">200 OK · seq 1043</text>
+
+        <!-- 6 WS -->
+        <line x1="426" y1="266" x2="694" y2="266" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"></line>
+        <text x="560" y="258" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">WS: есть seq 1043</text>
+        <line x1="426" y1="298" x2="874" y2="298" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)" opacity="0.55"></line>
+        <text x="650" y="290" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.7">WS: то же самое — вкладка обновит текст</text>
+
+        <!-- 7 -->
+        <line x1="694" y1="332" x2="426" y2="332" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"></line>
+        <text x="560" y="324" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">GET /changes?since=1042</text>
+
+        <!-- 8 -->
+        <line x1="426" y1="366" x2="694" y2="366" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)"></line>
+        <text x="560" y="358" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">путь + хеш 7c1e… → GET /blob</text>
+
+        <!-- 9 -->
+        <rect x="588" y="392" width="224" height="44" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+        <text x="700" y="409" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">запись: tmp + rename</text>
+        <text x="700" y="426" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">хеш в state → эхо погашено</text>
+
+        <text x="24" y="470" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity="0.55">время идёт вниз · от правки до появления на втором компьютере — около секунды</text>
+      </svg>
+    </div>
+    <figcaption>Последний шаг важнее, чем кажется: демон сам записывает файл, который приехал с сервера, и <code>fsnotify</code> тут же сообщит ему об этой записи. Если не запомнить ожидаемый хеш заранее, изменение уедет обратно на сервер, и два демона будут гонять его по кругу вечно.</figcaption>
+  </figure>
+
+  <h3>Что происходит при конфликте</h3>
+
+  <figure class="wide">
+    <p class="fig-label">Рис. 3 — Обе машины правили один файл</p>
+    <div class="svg-scroll">
+      <svg viewBox="0 0 900 268" role="img" aria-label="Мак и ПК правят один файл от общей версии; мак заливает первым и получает seq, ПК получает ошибку 409 и раскладывает обе версии на диск разными файлами">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+          </marker>
+        </defs>
+
+        <rect x="8" y="14" width="256" height="72" fill="none" stroke="currentColor" stroke-width="1.2"></rect>
+        <text x="24" y="38" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Обе машины правят файл</text>
+        <text x="24" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.65">обе от общей версии a3f9…</text>
+        <text x="24" y="75" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.65">мак офлайн в самолёте</text>
+
+        <line x1="266" y1="50" x2="316" y2="50" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"></line>
+
+        <rect x="320" y="14" width="240" height="72" fill="none" stroke="currentColor" stroke-width="1.2"></rect>
+        <text x="336" y="38" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">ПК успел первым</text>
+        <text x="336" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.65">200 OK · seq 1043</text>
+        <text x="336" y="75" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.65">на сервере теперь 7c1e…</text>
+
+        <line x1="562" y1="50" x2="612" y2="50" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"></line>
+
+        <rect x="616" y="14" width="276" height="72" fill="none" stroke="var(--sig)" stroke-width="1.6"></rect>
+        <text x="632" y="38" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="var(--sig)">Мак вышел в сеть</text>
+        <text x="632" y="58" font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--sig)">409 · If-Match: a3f9, а там 7c1e</text>
+        <text x="632" y="75" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity="0.65">ничего не перезаписано</text>
+
+        <line x1="450" y1="98" x2="450" y2="126" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar3)"></line>
+
+        <rect x="8" y="130" width="884" height="118" fill="none" stroke="currentColor" stroke-width="1.6"></rect>
+        <text x="26" y="154" font-family="Golos Text, sans-serif" font-size="13" font-weight="600" fill="currentColor">Что мак кладёт себе в папку</text>
+
+        <text x="26" y="184" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">Ачивки/2026_2/Микросервис доставки — интеграция СДЭК.md</text>
+        <text x="26" y="201" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity="0.6">версия с сервера, seq 1043 — путь остаётся прежним, ссылки не ломаются</text>
+
+        <text x="26" y="226" font-family="IBM Plex Mono, monospace" font-size="11.5" fill="var(--sig)">Ачивки/2026_2/Микросервис доставки — интеграция СДЭК (конфликт, мак, 2026-09-02 14:05).md</text>
+        <text x="26" y="240" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity="0.6">твоя версия, целиком, ничего не потеряно — заливается на сервер как обычный новый файл</text>
+      </svg>
+    </div>
+    <figcaption>Проигравшая версия никогда не удаляется и никогда не перезаписывается — она становится обычным новым файлом со своим путём и уезжает на сервер вместе со всеми. Ты видишь два файла рядом в дереве, сравниваешь и удаляешь лишний.</figcaption>
+  </figure>
+
+  <!-- ═══════════════ 4 ═══════════════ -->
+
+  <div class="sec-head" id="s4">
+    <span class="sec-num">4</span>
+    <h2>Что легко забыть</h2>
+  </div>
+
+  <p>Шесть мест, где такие проекты обычно ломаются. Каждое стоит пары часов отладки, если вспомнить о нём после, а не до.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Ловушка</th><th>Правило</th></tr></thead>
+      <tbody>
+        <tr><td class="key">Эхо</td><td>Перед записью пришедшего файла демон кладёт ожидаемый хеш в <code>state</code>. Событие <code>fsnotify</code> с этим хешем игнорируется — иначе изменение уедет обратно на сервер по кругу.</td></tr>
+        <tr><td class="key">Рваная запись</td><td>Всегда во временный файл и <code>rename</code> в пределах той же файловой системы. Иначе Obsidian или редактор прочитает половину файла.</td></tr>
+        <tr><td class="key">Дребезг редактора</td><td>Дебаунс 500 мс тишины по конкретному пути. Редакторы пишут файл в три-четыре приёма, и без дебаунса на сервер уедут три версии вместо одной.</td></tr>
+        <tr><td class="key">Мусор</td><td>Не синхронизируем: <code>.svod/</code>, <code>.git/</code>, <code>.DS_Store</code>, <code>.obsidian/workspace.json</code>, <code>*.swp</code>, <code>*~</code>. Список лежит в <code>.svodignore</code> в корне свода.</td></tr>
+        <tr><td class="key">Переименование</td><td>В v1 это удаление плюс создание. Блоб не перезаливается — хеш тот же, — но история по новому пути начинается заново. Принято сознательно.</td></tr>
+        <tr><td class="key">Офлайн</td><td>Демон офлайн — правки копятся локально и сливаются по одной при подключении. Браузер офлайн — просто не работает: локального кеша в v1 нет.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════ 5 ═══════════════ -->
+
+  <div class="sec-head" id="s5">
+    <span class="sec-num">5</span>
+    <h2>API</h2>
+  </div>
+
+  <p>Всё под <code>/api/v1</code>. Демон и браузер ходят в одни и те же ручки — разница только в способе аутентификации: у демона долгоживущий токен устройства в заголовке, у браузера сессионная кука после ввода пароля.</p>
+
+  <div class="wide">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Метод</th><th>Путь</th><th>Что делает</th></tr></thead>
+        <tbody>
+          <tr><td><span class="verb">POST</span></td><td class="mono">/auth</td><td>Пароль → сессионная кука на 30 дней. Хеш пароля Argon2id в конфиге сервера.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/changes?since=N</td><td>Всё, что произошло после <code>seq N</code>: путь, хеш, удаление, время. Курсор для догоняющей синхронизации.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/blob/{sha256}</td><td>Содержимое по хешу. Неизменяемо, поэтому кешируется навсегда.</td></tr>
+          <tr><td><span class="verb">PUT</span></td><td class="mono">/files/{path}</td><td>Залить версию. Заголовок <code>If-Match: base_hash</code> обязателен. Ответ <code>200</code> с новым <code>seq</code> либо <code>409</code> с текущим хешем сервера.</td></tr>
+          <tr><td><span class="verb">DELETE</span></td><td class="mono">/files/{path}</td><td>Надгробие в логе, а не удаление. Тоже с <code>If-Match</code>.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/tree</td><td>Дерево свода на текущий <code>seq</code>: пути, размеры, время правки.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/note/{path}</td><td>Содержимое плюс разобранное: frontmatter, теги, исходящие ссылки, бэклинки, структура заголовков.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/search?q=</td><td>Полнотекстовый поиск через FTS5, с фрагментами и подсветкой.</td></tr>
+          <tr><td><span class="verb">GET</span></td><td class="mono">/history/{path}</td><td>Все версии пути: <code>seq</code>, хеш, время, устройство.</td></tr>
+          <tr><td><span class="verb">WS</span></td><td class="mono">/stream</td><td>Одно сообщение на каждый новый <code>seq</code>. Не содержимое — только повод сходить за <code>/changes</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">
+    <span class="note-k">Токены устройств</span>
+    <p>У каждой машины свой токен, выпущенный командой <code>svodd device add «рабочий мак»</code>. Потерял ноутбук — отзываешь один токен, остальные продолжают работать. Общий пароль от браузера при этом менять не нужно.</p>
+  </div>
+
+  <!-- ═══════════════ 6 ═══════════════ -->
+
+  <div class="sec-head" id="s6">
+    <span class="sec-num">6</span>
+    <h2>Дизайн-система</h2>
+  </div>
+
+  <p class="lead">Ниже — не настроение, а значения. Пока они не поменяны здесь, они не меняются в коде: это и есть страховка от бесконечных переделок.</p>
+
+  <h3>Как это выглядит</h3>
+
+  <figure class="wide">
+    <p class="fig-label">Рис. 4 — Режим чтения, тёмная тема «墨と藍»</p>
+    <div class="screen-wrap">
+      <div class="screen">
+
+        <div class="s-top">
+          <span class="s-crumb">Ачивки / 2026_2 / <b>Микросервис доставки — интеграция СДЭК.md</b></span>
+          <span class="s-top-right">
+            <span class="s-mode">ЧТЕНИЕ</span>
+            <span class="s-kbd">⌘E правка</span>
+          </span>
+        </div>
+
+        <div class="s-body">
+
+          <div class="s-panel-l">
+            <p class="s-label">Свод</p>
+            <div class="s-row"><span class="s-caret">▸</span>📖 Go</div>
+            <div class="s-row"><span class="s-caret">▸</span>📓 Дневник</div>
+            <div class="s-row"><span class="s-caret">▾</span>Ачивки</div>
+            <div class="s-row d1"><span class="s-caret">▸</span>2026_1</div>
+            <div class="s-row d1"><span class="s-caret">▾</span>2026_2</div>
+            <div class="s-row d2 is-active">Микросервис доставки — инт…</div>
+            <div class="s-row d1">Performance Review H2 2025</div>
+            <div class="s-row"><span class="s-caret">▸</span>💻 Разработка</div>
+            <div class="s-row is-hover"><span class="s-caret">▸</span>LogEngine</div>
+            <div class="s-row"><span class="s-caret">▸</span>QA</div>
+            <div class="s-row"><span class="s-caret">▸</span>📚 Ресурсы</div>
+          </div>
+
+          <div class="s-main">
+            <h1 class="s-h1">Микросервис доставки — интеграция со СДЭК</h1>
+            <p class="s-meta">Дата: сентябрь 2026 · Роль: Go-разработчик (backend)</p>
+
+            <h2 class="s-h2">Контекст</h2>
+            <p class="s-p">Backend-микросервис в Go-монорепозитории VK. Отвечает за всю логику доставки в товарах и маркете сообществ: расчёт стоимости, выдача ПВЗ по городам, импорт точек и тарифов, оформление и отмена заказов у служб доставки.</p>
+
+            <h2 class="s-h2">Стек</h2>
+            <ul class="s-ul">
+              <li><strong>Хранилища:</strong> PostgreSQL <span class="s-code">pgx</span> с версионированными миграциями, memcache/PMC</li>
+              <li><strong>HTTP-клиенты:</strong> <span class="s-code">resty</span> для внешних API перевозчиков</li>
+              <li><strong>Тесты:</strong> testify, <span class="s-code">gomock</span> — unit и компонентные, см. <a href="#s6" class="s-link">QA / Skipped Tests — ecomm-backend</a></li>
+            </ul>
+
+            <h2 class="s-h2">Что делал лично</h2>
+            <ul class="s-task">
+              <li><span class="s-box on"></span><span class="s-done">Создание заказа в СДЭК end-to-end</span></li>
+              <li><span class="s-box on"></span><span class="s-done">Отмена заказа <span class="s-code">DELETE /v2/orders/{uuid}</span></span></li>
+              <li><span class="s-box"></span><span>Отказ по принятому в работу заказу</span></li>
+            </ul>
+
+            <p class="s-p" style="margin-top:20px"><span class="s-tag">#go</span> <span class="s-tag">#vk</span> <span class="s-tag">#delivery</span></p>
+          </div>
+
+          <div class="s-panel-r">
+            <p class="s-label">Структура</p>
+            <div class="s-out">
+              <span>Контекст</span>
+              <span>Стек</span>
+              <span class="cur">Что делал лично</span>
+              <span>Архитектура</span>
+            </div>
+            <p class="s-label">Ссылки сюда · 2</p>
+            <div class="s-back">
+              <div>Performance Review H2 2025</div>
+              <div>Планирование / Актуальные задачи</div>
+            </div>
+            <p class="s-label">Теги</p>
+            <div class="s-tags"><span>#go</span><span>#vk</span><span>#delivery</span></div>
+          </div>
+
+        </div>
+
+        <div class="s-status">
+          <span class="s-dot" style="background:#6FBE8E"></span>
+          <span>синхронизировано · 4 сек назад</span>
+          <span style="opacity:.5">·</span>
+          <span>225 файлов · seq 1043</span>
+          <span class="push">⌘K переход · ⌘⇧F поиск</span>
+        </div>
+
+      </div>
+    </div>
+    <figcaption>Реальная заметка из твоего свода в реальных пропорциях. Три колонки: дерево 216, текст на гибкой середине с мерой около 62 знаков, правая панель 236. Статус синхронизации всегда на виду внизу слева — это единственное, что отличает свод от обычного просмотрщика markdown.</figcaption>
+  </figure>
+
+  <h3>Цвет — тёмная тема «墨と藍», тушь и индиго</h3>
+
+  <p>Палитра собрана из традиционных японских цветов. Это не украшение: у неё есть свойство, которое здесь важно — почти все эти краски получены из растений и минералов, поэтому они приглушены и не спорят друг с другом. Чистого синего или чистого красного в наборе нет вообще, и интерфейс от этого перестаёт кричать. Тёмная основа — <span style="font-family:var(--f-jp)">藍墨茶</span>, «индиго-тушь-чай»: чёрный с синим подтоном, каким красили ткань, смешивая индиго с сажей.</p>
+
+  <div class="note">
+    <span class="note-k">Про значения</span>
+    <p>Названия — настоящие, из традиционного канона. Шестнадцатеричные значения подобраны под контраст на экране, а не переписаны из справочника красителей: у растительной краски нет канонического sRGB, а текст должен читаться. Каждый цвет проверен на своём фоне — минимум 4.5:1 для текста.</p>
+  </div>
+
+  <div class="wide">
+    <div class="swatches">
+      <div class="sw"><div class="sw-chip" style="background:#12171A"></div><div class="sw-meta"><span class="sw-name">--bg</span><span class="sw-hex">#12171A</span><span class="sw-jp">藍墨茶 <em>aisumicha</em></span><span class="sw-use">Индиго-тушь. Холст под текстом</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#191F23"></div><div class="sw-meta"><span class="sw-name">--bg-panel</span><span class="sw-hex">#191F23</span><span class="sw-jp">黒橡 <em>kurotsurubami</em></span><span class="sw-use">Чёрный жёлудь. Дерево, панели</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#212930"></div><div class="sw-meta"><span class="sw-name">--bg-raised</span><span class="sw-hex">#212930</span><span class="sw-jp">消炭色 <em>keshizumi</em></span><span class="sw-use">Гашёный уголь. Ховер, поля</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#2A343D"></div><div class="sw-meta"><span class="sw-name">--bg-active</span><span class="sw-hex">#2A343D</span><span class="sw-jp">藍鉄 <em>aitetsu</em></span><span class="sw-use">Железный индиго. Выбранная строка</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#242C32"></div><div class="sw-meta"><span class="sw-name">--line</span><span class="sw-hex">#242C32</span><span class="sw-jp">墨 <em>sumi</em></span><span class="sw-use">Тушь. Разделители панелей</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#37424B"></div><div class="sw-meta"><span class="sw-name">--line-strong</span><span class="sw-hex">#37424B</span><span class="sw-jp">鈍色 <em>nibi-iro</em></span><span class="sw-use">Тусклый. Границы полей</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#EDEAE2"></div><div class="sw-meta"><span class="sw-name">--fg</span><span class="sw-hex">#EDEAE2</span><span class="sw-jp">白練 <em>shironeri</em></span><span class="sw-use">Белёный шёлк. Текст заметки</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#A2A9A8"></div><div class="sw-meta"><span class="sw-name">--fg-dim</span><span class="sw-hex">#A2A9A8</span><span class="sw-jp">銀鼠 <em>gin-nezu</em></span><span class="sw-use">Серебряная мышь. Дерево</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#6E7A80"></div><div class="sw-meta"><span class="sw-name">--fg-faint</span><span class="sw-hex">#6E7A80</span><span class="sw-jp">鉛色 <em>namari-iro</em></span><span class="sw-use">Свинец. Метки, статус-бар</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#4FB3BF"></div><div class="sw-meta"><span class="sw-name">--accent</span><span class="sw-hex">#4FB3BF</span><span class="sw-jp">浅葱色 <em>asagi-iro</em></span><span class="sw-use">Бледный лук. Ссылки, активное</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#17353B"></div><div class="sw-meta"><span class="sw-name">--accent-bg</span><span class="sw-hex">#17353B</span><span class="sw-jp">濃藍 <em>koiai</em></span><span class="sw-use">Густой индиго. Выделение</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#A99BD1"></div><div class="sw-meta"><span class="sw-name">--tag</span><span class="sw-hex">#A99BD1</span><span class="sw-jp">藤色 <em>fuji-iro</em></span><span class="sw-use">Глициния. Только теги</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#6FBE8E"></div><div class="sw-meta"><span class="sw-name">--ok</span><span class="sw-hex">#6FBE8E</span><span class="sw-jp">若竹色 <em>wakatake-iro</em></span><span class="sw-use">Молодой бамбук. Синхронизировано</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#D9A441"></div><div class="sw-meta"><span class="sw-name">--warn</span><span class="sw-hex">#D9A441</span><span class="sw-jp">山吹色 <em>yamabuki-iro</em></span><span class="sw-use">Керрия. Заливается, очередь</span></div></div>
+      <div class="sw"><div class="sw-chip" style="background:#D2635F"></div><div class="sw-meta"><span class="sw-name">--danger</span><span class="sw-hex">#D2635F</span><span class="sw-jp">蘇芳 <em>suō</em></span><span class="sw-use">Цезальпиния. Конфликт, ошибка</span></div></div>
+    </div>
+  </div>
+
+  <h3>Цвет — светлая тема «生成り», небелёный холст</h3>
+  <p>Не инверсия, а отдельный набор из того же канона: основа — <span style="font-family:var(--f-jp)">生成り色</span>, цвет некрашеной ткани, тёплый и слегка желтоватый вместо стерильного белого. Акцент темнеет с <span style="font-family:var(--f-jp)">浅葱</span> до <span style="font-family:var(--f-jp)">藍</span>, чтобы держать контраст на светлом. Меняются только значения переменных; ни одно правило CSS не знает, какая тема активна.</p>
+
+  <div class="wide">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Токен</th><th>Тёмная</th><th>Светлая</th><th>Название светлой</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">--bg</td><td class="mono">#12171A</td><td class="mono">#F7F4EC</td><td class="mono">生成り色 · kinari-iro</td></tr>
+          <tr><td class="mono">--bg-panel</td><td class="mono">#191F23</td><td class="mono">#EFEBE0</td><td class="mono">象牙色 · zōge-iro</td></tr>
+          <tr><td class="mono">--bg-raised</td><td class="mono">#212930</td><td class="mono">#E5E0D2</td><td class="mono">灰白色 · kaihakushoku</td></tr>
+          <tr><td class="mono">--bg-active</td><td class="mono">#2A343D</td><td class="mono">#D8D1C0</td><td class="mono">白茶 · shiracha</td></tr>
+          <tr><td class="mono">--line</td><td class="mono">#242C32</td><td class="mono">#DED8C8</td><td class="mono">練色 · neri-iro</td></tr>
+          <tr><td class="mono">--line-strong</td><td class="mono">#37424B</td><td class="mono">#C3BBA8</td><td class="mono">利休白茶 · rikyū-shiracha</td></tr>
+          <tr><td class="mono">--fg</td><td class="mono">#EDEAE2</td><td class="mono">#1C2124</td><td class="mono">墨 · sumi</td></tr>
+          <tr><td class="mono">--fg-dim</td><td class="mono">#A2A9A8</td><td class="mono">#55606A</td><td class="mono">鈍色 · nibi-iro</td></tr>
+          <tr><td class="mono">--fg-faint</td><td class="mono">#6E7A80</td><td class="mono">#6E7880</td><td class="mono">鼠色 · nezumi-iro</td></tr>
+          <tr><td class="mono">--accent</td><td class="mono">#4FB3BF</td><td class="mono">#176B7A</td><td class="mono">藍色 · ai-iro</td></tr>
+          <tr><td class="mono">--accent-bg</td><td class="mono">#17353B</td><td class="mono">#D5E7E9</td><td class="mono">白群 · byakugun</td></tr>
+          <tr><td class="mono">--tag</td><td class="mono">#A99BD1</td><td class="mono">#5C4F97</td><td class="mono">桔梗色 · kikyō-iro</td></tr>
+          <tr><td class="mono">--ok</td><td class="mono">#6FBE8E</td><td class="mono">#2C6B47</td><td class="mono">千歳緑 · chitosemidori</td></tr>
+          <tr><td class="mono">--warn</td><td class="mono">#D9A441</td><td class="mono">#A5702A</td><td class="mono">琥珀色 · kohaku-iro</td></tr>
+          <tr><td class="mono">--danger</td><td class="mono">#D2635F</td><td class="mono">#A5292F</td><td class="mono">茜色 · akane-iro</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3>Типографика и размеры</h3>
+
+  <div class="wide">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Роль</th><th>Гарнитура</th><th>Размер / интерлиньяж</th><th>Где</th></tr></thead>
+        <tbody>
+          <tr><td class="key">Интерфейс</td><td class="mono">system-ui, -apple-system, Segoe UI</td><td class="mono">13 / 1.45</td><td>Дерево, панели, меню, статус-бар</td></tr>
+          <tr><td class="key">Текст заметки</td><td class="mono">тот же sans</td><td class="mono">14.5 / 1.7</td><td>Абзацы, списки. Мера — 62 знака</td></tr>
+          <tr><td class="key">Заголовки</td><td class="mono">тот же sans, 600</td><td class="mono">H1 23 · H2 17 · H3 15</td><td>Только внутри заметки</td></tr>
+          <tr><td class="key">Машинный текст</td><td class="mono">ui-monospace, JetBrains Mono, SF Mono</td><td class="mono">12.5 / 1.5</td><td>Код, пути, хеши, хлебные крошки</td></tr>
+          <tr><td class="key">Метки панелей</td><td class="mono">mono, uppercase</td><td class="mono">10 · +0.09em</td><td>СВОД, СТРУКТУРА, ССЫЛКИ СЮДА</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Размер</th><th>Значение</th></tr></thead>
+      <tbody>
+        <tr><td class="key">Колонки</td><td class="mono">дерево 216 (тянется 180–400) · середина гибкая · правая 236</td></tr>
+        <tr><td class="key">Полосы</td><td class="mono">верхняя 36 · статус-бар 27</td></tr>
+        <tr><td class="key">Строка дерева</td><td class="mono">26 · отступ уровня 12</td></tr>
+        <tr><td class="key">Шаг отступов</td><td class="mono">4 · 8 · 12 · 16 · 24 · 40</td></tr>
+        <tr><td class="key">Радиус</td><td class="mono">4 везде · 6 у всплывающих слоёв</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Пять правил, которые не дают дизайну расползтись</h3>
+  <ol class="body-list">
+    <li><strong>Один акцентный цвет.</strong> Всё, что «выбрано», «активно» или «ссылка» — это <span style="font-family:var(--f-jp)">浅葱</span>. Второго акцента в интерфейсе нет; <span style="font-family:var(--f-jp)">藤</span> закреплена за тегами и больше нигде не появляется.</li>
+    <li><strong>Границы вместо теней.</strong> Тень имеют только всплывающие слои: <code>⌘K</code>, меню, диалоги. Панели разделены линиями.</li>
+    <li><strong>Один радиус.</strong> 4 пикселя. Не 6, не 8, не 12 у карточек.</li>
+    <li><strong>Не карточки.</strong> В интерфейсе нет прямоугольников с рамкой, тенью и отступом. Есть панели, разделённые линиями.</li>
+    <li><strong>Иконки только в дереве.</strong> Папка, файл и точка синхронизации. Всё остальное — текст: кнопки подписаны словами.</li>
+  </ol>
+
+  <h3>Индикатор синхронизации</h3>
+  <p>Всегда внизу слева, четыре состояния. Это главный элемент интерфейса: он отвечает на единственный вопрос, который возникает у человека, доверившего файлы своему серверу.</p>
+
+  <div class="states">
+    <div class="state-row"><span class="s-dot" style="background:#6FBE8E"></span><span class="txt">синхронизировано · 4 сек назад</span><span class="why">Всё уехало, ничего не ждёт</span></div>
+    <div class="state-row"><span class="s-dot" style="background:#D9A441"></span><span class="txt">заливаю 3 файла…</span><span class="why">Есть локальные правки в пути</span></div>
+    <div class="state-row"><span class="s-dot" style="background:#6E7A80"></span><span class="txt">офлайн · 12 правок в очереди</span><span class="why">Сервер недоступен, работа продолжается</span></div>
+    <div class="state-row"><span class="s-dot" style="background:#D2635F"></span><span class="txt">конфликт в 1 файле</span><span class="why">Клик открывает список конфликтных копий</span></div>
+  </div>
+
+  <h3>Клавиатура</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Сочетание</th><th>Действие</th></tr></thead>
+      <tbody>
+        <tr><td class="mono key">⌘K</td><td>Быстрый переход по именам файлов</td></tr>
+        <tr><td class="mono key">⌘⇧F</td><td>Поиск по содержимому свода</td></tr>
+        <tr><td class="mono key">⌘E</td><td>Чтение ↔ правка</td></tr>
+        <tr><td class="mono key">⌘S</td><td>Сохранить и залить немедленно, не дожидаясь дебаунса</td></tr>
+        <tr><td class="mono key">⌘\</td><td>Свернуть дерево</td></tr>
+        <tr><td class="mono key">⌘.</td><td>Свернуть правую панель</td></tr>
+        <tr><td class="mono key">Esc</td><td>Закрыть всплывающий слой</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════ 7 ═══════════════ -->
+
+  <div class="sec-head" id="s7">
+    <span class="sec-num">7</span>
+    <h2>Стек</h2>
+  </div>
+
+  <p class="lead">Критерий отбора один: меньше движущихся частей. Ни одной зависимости, которую нельзя объяснить одной строкой.</p>
+
+  <div class="wide">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Слой</th><th>Выбор</th><th>Почему именно так</th></tr></thead>
+        <tbody>
+          <tr><td class="key">Сервер</td><td class="mono">Go 1.23 + chi v5</td><td>Группы маршрутов, аккуратный стек middleware и готовый <code>chi/middleware</code> — логи, recovery, таймауты, request-id из коробки.</td></tr>
+          <tr><td class="key">Метаданные</td><td class="mono">modernc.org/sqlite</td><td>Чистый Go, без cgo. <code>GOOS=linux go build</code> с мака собирает бинарник для VPS без тулчейна и докера.</td></tr>
+          <tr><td class="key">Поиск</td><td class="mono">SQLite FTS5</td><td>Уже внутри той же библиотеки. Отдельный поисковый движок для 225 файлов — это смешно.</td></tr>
+          <tr><td class="key">Содержимое</td><td class="mono">файлы blobs/7c/1e9a…</td><td>Контент-адресуемое хранилище. Дедупликация и история версий получаются сами, без единой строчки кода.</td></tr>
+          <tr><td class="key">Разбор markdown</td><td class="mono">yuin/goldmark + meta</td><td>Нужен серверу для индекса: wiki-links, теги, frontmatter, структура заголовков.</td></tr>
+          <tr><td class="key">Слежение за ФС</td><td class="mono">fsnotify/fsnotify</td><td>Стандарт де-факто, работает на всех трёх платформах одинаково.</td></tr>
+          <tr><td class="key">WebSocket</td><td class="mono">coder/websocket</td><td>Маленькая, без транзитивных зависимостей, идиоматичный контекстный API.</td></tr>
+          <tr><td class="key">Демон</td><td class="mono">тот же Go, cmd/svod</td><td>Общий код протокола с сервером лежит в <code>internal/sync</code> — типы и правила описаны один раз.</td></tr>
+          <tr><td class="key">Фронт</td><td class="mono">TypeScript + Vite</td><td>Без SSR, без метафреймворка. Vite собирает статику, которую забирает <code>go:embed</code>.</td></tr>
+          <tr><td class="key">UI</td><td class="mono">React 18</td><td>Дерево, панели и оверлеи — задачи с готовыми решениями. Ты не фронтендер, и экосистема здесь окупается сильнее, чем экономия килобайт.</td></tr>
+          <tr><td class="key">Стили</td><td class="mono">CSS-переменные + CSS Modules</td><td>Токены из раздела 6 живут в одном файле и правятся в одном месте. Tailwind размазал бы их по разметке — прямо то, чего мы избегаем.</td></tr>
+          <tr><td class="key">Рендер markdown</td><td class="mono">markdown-it</td><td>Проще, чем remark/unified: один проход, а плагин под <code>[[wiki-links]]</code> пишется за двадцать строк.</td></tr>
+          <tr><td class="key">Редактор</td><td class="mono">CodeMirror 6</td><td>Единственный вменяемый вариант для markdown в браузере. Нужен только в режиме <code>⌘E</code>, поэтому грузится лениво.</td></tr>
+          <tr><td class="key">Деплой</td><td class="mono">go:embed + systemd + Caddy</td><td>Один файл на сервер, юнит на 10 строк, Caddy сам получает и продлевает сертификат Let's Encrypt.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="note">
+    <span class="note-k">Почему chi, а не Gin, Echo или Fiber</span>
+    <p>Не из аскезы, а из-за одного технического свойства: у chi хендлер остаётся обычным <code>http.Handler</code>, а параметры пути достаются из запроса. Gin и Echo вводят собственный тип контекста, и всё, что написано под стандартную библиотеку, начинает ходить через переходники — включая WebSocket и любой сторонний middleware. Fiber построен на fasthttp и с <code>net/http</code> несовместим вовсе, так что <code>coder/websocket</code> с ним просто не соберётся.</p>
+    <p>chi даёт ровно то, ради чего берут фреймворк — группы маршрутов, монтирование поддеревьев, цепочку middleware, — и ничего не ломает взамен. Если завтра он разонравится, снять его можно за вечер.</p>
+  </div>
+
+  <h3>Раскладка репозитория</h3>
+
+  <div class="code"><b>svod/</b>
+├── cmd/
+│   ├── <b>svod/</b>        <i>демон и CLI на машине</i>
+│   └── <b>svodd/</b>       <i>сервер на VPS</i>
+├── internal/
+│   ├── <b>proto/</b>       <i>типы и правила протокола — общие для обоих</i>
+│   ├── <b>watch/</b>       <i>fsnotify, дебаунс, сканер, .svodignore</i>
+│   ├── <b>local/</b>       <i>state.db, атомарная запись, гашение эха</i>
+│   ├── <b>store/</b>       <i>блобы, лог seq, история</i>
+│   ├── <b>index/</b>       <i>goldmark: ссылки, теги, frontmatter, FTS5</i>
+│   └── <b>api/</b>         <i>HTTP-ручки, WebSocket, аутентификация</i>
+├── web/                <i>Vite + React + TS, собирается в web/dist</i>
+└── docs/<b>design.md</b>    <i>этот документ</i>
+</div>
+
+  <!-- ═══════════════ 8 ═══════════════ -->
+
+  <div class="sec-head" id="s8">
+    <span class="sec-num">8</span>
+    <h2>Что не входит в v1</h2>
+  </div>
+
+  <p>Список существует ровно для того, чтобы на него ссылаться, когда захочется «заодно добавить». Каждый пункт исключён осознанно, а не забыт.</p>
+
+  <div class="outlist">
+    <div class="outrow"><span class="no">нет</span><span class="what">Совместное редактирование</span><span class="when">CRDT и живой курсор соседа. Не нужно человеку, который работает один.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Картинки и вложения</span><span class="when">Первое, что добавим после ядра — этап 5.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Граф связей</span><span class="when">Данные для него собираются уже в v1. Рисование — когда захочется.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Мобильная вёрстка</span><span class="when">Три колонки на телефоне не живут. Нужна отдельная раскладка.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Офлайн в браузере</span><span class="when">Локальный кеш и очередь во вкладке — это второй демон, только на TypeScript.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Сквозное шифрование</span><span class="when">Убивает серверный поиск и индекс. Решение № 6 закрыто.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">История при переименовании</span><span class="when">Переименование = удалить + создать. Содержимое не теряется, история начинается заново.</span></div>
+    <div class="outrow"><span class="no">нет</span><span class="what">Плагины, темы, canvas, экспорт в PDF</span><span class="when">Именно от этого мы и уходим.</span></div>
+  </div>
+
+  <!-- ═══════════════ 9 ═══════════════ -->
+
+  <div class="sec-head" id="s9">
+    <span class="sec-num">9</span>
+    <h2>Этапы</h2>
+  </div>
+
+  <p>Порядок не переставляется: каждый следующий этап опирается на проверку предыдущего. У каждого — конкретный признак того, что он закончен.</p>
+
+  <div class="stages">
+
+    <div class="stage">
+      <span class="stage-n">Э0</span>
+      <div>
+        <h4>Каркас</h4>
+        <p>Раскладка репозитория, конфиги, схема SQLite, <code>svod init</code>, <code>svodd</code> поднимается и отвечает на <code>/healthz</code>. Ничего ещё не синхронизируется.</p>
+        <p class="check">Готово, когда: <code>svod status</code> печатает «свод ~/obsidian/Vk, 225 файлов, сервер недоступен».</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span class="stage-n">Э1</span>
+      <div>
+        <h4>Дорога наверх</h4>
+        <p>Первичный скан, <code>fsnotify</code>, дебаунс, <code>.svodignore</code>, блоб-стор, лог <code>seq</code>, <code>PUT /files</code>. Браузер отдаёт сырой текст без всякого оформления.</p>
+        <p class="check">Готово, когда: правишь файл на маке — через секунду видишь новый текст в браузере на телефоне.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span class="stage-n">Э2</span>
+      <div>
+        <h4>Дорога обратно</h4>
+        <p>Самый сложный этап. <code>GET /changes</code>, WebSocket, атомарная запись, гашение эха, конфликтные копии, история версий.</p>
+        <p class="check">Готово, когда: два демона на одной машине в разных папках сходятся к одному состоянию, а одновременная правка в обеих даёт конфликтную копию, а не потерю текста.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span class="stage-n">Э3</span>
+      <div>
+        <h4>Индекс и поиск</h4>
+        <p>goldmark разбирает <code>[[wiki-links]]</code>, <code>#теги</code> и frontmatter. Бэклинки, FTS5, <code>⌘K</code>, <code>⌘⇧F</code>.</p>
+        <p class="check">Готово, когда: ссылка <code>[[📖 Go/00_Main_Index]]</code> кликается, а панель бэклинков сходится с тем, что реально написано в своде.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span class="stage-n">Э4</span>
+      <div>
+        <h4>Интерфейс и правка из браузера</h4>
+        <p>Дизайн-система из раздела 6 целиком: три колонки, обе темы, все токены. CodeMirror по <code>⌘E</code>, запись через <code>If-Match</code>, обработка <code>409</code> во вкладке.</p>
+        <p class="check">Готово, когда: пишешь заметку с телефона в метро, и она лежит на маке к моменту, когда ты открыл ноутбук.</p>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span class="stage-n">Э5</span>
+      <div>
+        <h4>Картинки и вложения</h4>
+        <p>Бинарные блобы, отображение в тексте, вставка из буфера с автосохранением в папку вложений.</p>
+        <p class="check">Готово, когда: <code>Pasted image 20260421121101.png</code> из твоего свода открывается в браузере.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <span class="note-k">Осталось решить перед стартом</span>
+    <p><strong>Имя.</strong> «Свод» — рабочее: и хранилище, и собрание записей, и <code>svod</code> хорошо ложится в командную строку. Скажешь другое — переименуем сейчас, потом будет дороже.</p>
+    <p><strong>Репозиторий.</strong> Отдельный <code>~/dev/svod</code> или подпапка в существующем? Отдельный удобнее: своя история, свой CI.</p>
+    <p><strong>VPS.</strong> Есть уже готовый, или поднимаем с нуля? От этого зависит, входит ли настройка Caddy и systemd в этап 0.</p>
+  </div>
+
+  <div class="colophon">
+    <span>Свод · спецификация v1.0</span>
+    <span>Зафиксировано 02.09.2026</span>
+    <span>Решения 1–9 закрыты</span>
+    <span>Изменения — только правкой этого документа</span>
+  </div>
+
+</div>

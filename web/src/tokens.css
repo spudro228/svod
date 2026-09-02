@@ -1,0 +1,63 @@
+/*
+  Дизайн-токены Свода. Единственное место, где живут значения цвета
+  и размеров — правится здесь, нигде больше.
+
+  Палитра собрана из традиционных японских цветов. Названия настоящие,
+  шестнадцатеричные значения подобраны под контраст на экране.
+  Тёмная тема — основная: 墨と藍, тушь и индиго.
+*/
+
+:root {
+  /* Тёмная тема «墨と藍» */
+  --bg:          #12171A; /* 藍墨茶  aisumicha   — индиго-тушь */
+  --bg-panel:    #191F23; /* 黒橡    kurotsurubami — чёрный жёлудь */
+  --bg-raised:   #212930; /* 消炭色  keshizumi   — гашёный уголь */
+  --bg-active:   #2A343D; /* 藍鉄    aitetsu     — железный индиго */
+  --line:        #242C32; /* 墨      sumi        — тушь */
+  --line-strong: #37424B; /* 鈍色    nibi-iro    — тусклый */
+  --fg:          #EDEAE2; /* 白練    shironeri   — белёный шёлк */
+  --fg-dim:      #A2A9A8; /* 銀鼠    gin-nezu    — серебряная мышь */
+  --fg-faint:    #6E7A80; /* 鉛色    namari-iro  — свинец */
+  --accent:      #4FB3BF; /* 浅葱色  asagi-iro   — бледный лук */
+  --accent-bg:   #17353B; /* 濃藍    koiai       — густой индиго */
+  --tag:         #A99BD1; /* 藤色    fuji-iro    — глициния */
+  --ok:          #6FBE8E; /* 若竹色  wakatake    — молодой бамбук */
+  --warn:        #D9A441; /* 山吹色  yamabuki    — керрия */
+  --danger:      #D2635F; /* 蘇芳    suo         — цезальпиния */
+
+  /* Размеры */
+  --col-left: 216px;
+  --col-right: 236px;
+  --bar-top: 36px;
+  --bar-status: 27px;
+  --row: 26px;
+  --radius: 4px;
+  --measure: 62ch;
+
+  /* Шрифты */
+  --f-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+/* Светлая тема «生成り», небелёный холст. Не инверсия, а отдельный набор. */
+:root[data-theme="light"] {
+  --bg:          #F7F4EC; /* 生成り色    kinari-iro */
+  --bg-panel:    #EFEBE0; /* 象牙色      zoge-iro */
+  --bg-raised:   #E5E0D2; /* 灰白色      kaihakushoku */
+  --bg-active:   #D8D1C0; /* 白茶        shiracha */
+  --line:        #DED8C8; /* 練色        neri-iro */
+  --line-strong: #C3BBA8; /* 利休白茶    rikyu-shiracha */
+  --fg:          #1C2124; /* 墨          sumi */
+  --fg-dim:      #55606A; /* 鈍色        nibi-iro */
+  --fg-faint:    #6E7880; /* 鼠色        nezumi-iro */
+  --accent:      #176B7A; /* 藍色        ai-iro */
+  --accent-bg:   #D5E7E9; /* 白群        byakugun */
+  --tag:         #5C4F97; /* 桔梗色      kikyo-iro */
+  --ok:          #2C6B47; /* 千歳緑      chitosemidori */
+  --warn:        #A5702A; /* 琥珀色      kohaku-iro */
+  --danger:      #A5292F; /* 茜色        akane-iro */
+
+  color-scheme: light;
+}

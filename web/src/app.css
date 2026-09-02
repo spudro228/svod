@@ -1,0 +1,325 @@
+/*
+  Раскладка и компоненты. Все цвета берутся из токенов — литералов здесь нет.
+  Пять правил из спеки: один акцент, границы вместо теней, радиус 4,
+  не карточки, иконки только в дереве.
+*/
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--f-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ───────────── Каркас ───────────── */
+
+.app {
+  display: grid;
+  grid-template-rows: var(--bar-top) 1fr var(--bar-status);
+  height: 100%;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-panel);
+  min-width: 0;
+}
+.crumb {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crumb b { color: var(--fg); font-weight: 500; }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
+
+.pill {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 2px 7px;
+}
+.pill.is-on { color: var(--accent); border-color: var(--accent); }
+.kbd { font-family: var(--f-mono); font-size: 11px; color: var(--fg-faint); }
+
+.body { display: grid; grid-template-columns: var(--col-left) 1fr var(--col-right); min-height: 0; }
+.body.no-left { grid-template-columns: 0 1fr var(--col-right); }
+.body.no-right { grid-template-columns: var(--col-left) 1fr 0; }
+.body.no-left.no-right { grid-template-columns: 0 1fr 0; }
+
+.panel {
+  background: var(--bg-panel);
+  overflow: auto;
+  padding: 12px 0 24px;
+  min-width: 0;
+}
+.panel-l { border-right: 1px solid var(--line); }
+.panel-r { border-left: 1px solid var(--line); }
+.body.no-left .panel-l, .body.no-right .panel-r { display: none; }
+
+.label {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  padding: 0 12px;
+  margin: 0 0 7px;
+}
+.label + .label, .panel-section + .panel-section .label { margin-top: 20px; }
+
+/* ───────────── Дерево ───────────── */
+
+.row {
+  height: var(--row);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: left;
+}
+.row:hover { background: var(--bg-raised); color: var(--fg); }
+.row.is-active {
+  background: var(--bg-active);
+  color: var(--fg);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.row .caret { color: var(--fg-faint); font-size: 9px; width: 8px; flex: none; }
+.row .name { overflow: hidden; text-overflow: ellipsis; }
+
+/* ───────────── Заметка ───────────── */
+
+.main { overflow: auto; min-width: 0; }
+.note { padding: 30px 40px 60px; }
+
+.note-head { margin-bottom: 22px; }
+.note h1 { font-size: 23px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 8px; line-height: 1.25; }
+.note-meta { font-family: var(--f-mono); font-size: 12px; color: var(--fg-faint); }
+
+.md { max-width: var(--measure); font-size: 14.5px; line-height: 1.7; }
+.md h1 { font-size: 23px; font-weight: 600; margin: 28px 0 0; letter-spacing: -0.015em; }
+.md h2 { font-size: 17px; font-weight: 600; margin: 26px 0 0; letter-spacing: -0.01em; }
+.md h3 { font-size: 15px; font-weight: 600; margin: 22px 0 0; }
+.md h4, .md h5, .md h6 { font-size: 14px; font-weight: 600; margin: 20px 0 0; }
+.md p { margin: 10px 0 0; }
+.md ul, .md ol { margin: 10px 0 0; padding-left: 22px; }
+.md li { margin-top: 4px; }
+.md li::marker { color: var(--fg-faint); }
+.md blockquote {
+  margin: 14px 0 0;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--fg-dim);
+}
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 24px 0; }
+.md a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-bg); }
+.md a:hover { border-bottom-color: var(--accent); }
+
+.md code {
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 4px;
+}
+.md pre {
+  margin: 14px 0 0;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.md pre code { background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.6; }
+
+.md table { border-collapse: collapse; margin: 14px 0 0; font-size: 13.5px; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; }
+.md th { background: var(--bg-raised); font-weight: 600; }
+
+.md .tag { color: var(--tag); font-family: var(--f-mono); font-size: 12.5px; }
+.md .wikilink { color: var(--accent); cursor: pointer; }
+
+/* Чекбоксы задач: отметка рисуется через ::before, разметку не подменяем */
+.md li.task { list-style: none; margin-left: -22px; padding-left: 22px; position: relative; }
+.md li.task::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+}
+.md li.task.done::before { background: var(--accent); border-color: var(--accent); }
+.md li.task.done { color: var(--fg-faint); }
+
+.source {
+  max-width: none;
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-dim);
+  margin: 0;
+}
+
+/* ───────────── Правая панель ───────────── */
+
+.outline { padding: 0 12px; font-size: 12.5px; line-height: 1.9; }
+.outline button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outline button:hover { color: var(--fg); }
+.outline .h2 { padding-left: 10px; }
+.outline .h3 { padding-left: 20px; }
+.outline .h4, .outline .h5, .outline .h6 { padding-left: 30px; }
+
+.links { padding: 0 12px; font-size: 12.5px; }
+.links button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: var(--accent);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.links .empty, .outline .empty, .tags .empty { color: var(--fg-faint); }
+
+.tags { padding: 0 12px; display: flex; flex-wrap: wrap; gap: 5px; }
+.tags span {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  color: var(--tag);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 1px 6px;
+}
+
+/* ───────────── Статус-бар ───────────── */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-panel);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+  min-width: 0;
+}
+.status .sep { opacity: 0.45; }
+.status .push { margin-left: auto; display: flex; gap: 12px; flex: none; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--fg-faint); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.danger { background: var(--danger); }
+
+/* ───────────── Всплывающие слои ───────────── */
+/* Единственное место, где разрешена тень */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 10;
+}
+.palette {
+  width: min(680px, 92vw);
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.45);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 66vh;
+}
+.palette input {
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+.palette input::placeholder { color: var(--fg-faint); }
+.palette-list { overflow: auto; padding: 6px 0; }
+.hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 16px;
+  color: var(--fg-dim);
+}
+.hit:hover, .hit.is-active { background: var(--bg-active); color: var(--fg); }
+.hit .t { color: var(--fg); font-size: 13.5px; }
+.hit .p { font-family: var(--f-mono); font-size: 11px; color: var(--fg-faint); }
+.hit .s { font-size: 12px; color: var(--fg-dim); margin-top: 2px; }
+.hit .s mark { background: var(--accent-bg); color: var(--accent); }
+.palette-foot {
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.empty-state {
+  padding: 60px 40px;
+  color: var(--fg-faint);
+  max-width: var(--measure);
+}
+.empty-state h2 { color: var(--fg); font-size: 17px; font-weight: 600; margin: 0 0 10px; }
+.empty-state code {
+  font-family: var(--f-mono);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

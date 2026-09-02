@@ -1,0 +1,20 @@
+# Демо: сервер в контейнере, демон запускается на маке нативно.
+#
+# fsnotify через bind-mount с macOS в контейнер работает нестабильно,
+# да и в реальности демон живёт на машине, а не рядом с сервером.
+services:
+  svodd:
+    build: .
+    container_name: svod-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - svod-data:/data
+    environment:
+      # Пустой токен = доступ без проверки. Годится только локально;
+      # на VPS обязательно задать.
+      SVOD_TOKEN: "${SVOD_TOKEN:-}"
+    restart: unless-stopped
+
+volumes:
+  svod-data:

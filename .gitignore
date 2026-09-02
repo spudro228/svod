@@ -1,0 +1,6 @@
+/data/
+/bin/
+web/node_modules/
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
+.DS_Store
