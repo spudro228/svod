@@ -533,7 +533,7 @@ func (a *Agent) do(ctx context.Context, method, p string, body *bytes.Reader, hd
 	if a.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+a.Token)
 	}
-	req.Header.Set(proto.HeaderDevice, a.Device)
+	req.Header.Set(proto.HeaderDevice, proto.EncodeDevice(a.Device))
 	if body != nil {
 		req.Header.Set("Content-Type", "text/markdown; charset=utf-8")
 	}

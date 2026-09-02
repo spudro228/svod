@@ -2,12 +2,30 @@
 // Пакет общий для сервера и демона — контракт описан здесь один раз.
 package proto
 
+import "net/url"
+
 // HeaderIfMatch несёт хеш версии, от которой клиент отталкивался.
 // Заголовок отсутствует — клиент считает, что файла на сервере ещё нет.
 const HeaderIfMatch = "If-Match"
 
 // HeaderDevice — имя устройства, попадает в историю версий.
+//
+// Значение передаётся в процентном кодировании: заголовки HTTP обязаны
+// быть Latin-1, а имена машин у нас бывают кириллицей. Браузерный fetch
+// на нарушении этого правила падает с TypeError ещё до отправки запроса.
 const HeaderDevice = "X-Svod-Device"
+
+// EncodeDevice готовит имя устройства к передаче в заголовке.
+func EncodeDevice(name string) string { return url.QueryEscape(name) }
+
+// DecodeDevice разбирает имя обратно. Незакодированное значение
+// возвращается как есть — старые клиенты продолжают работать.
+func DecodeDevice(raw string) string {
+	if decoded, err := url.QueryUnescape(raw); err == nil {
+		return decoded
+	}
+	return raw
+}
 
 // FileMeta описывает файл на текущий seq либо одну запись в логе изменений.
 type FileMeta struct {
