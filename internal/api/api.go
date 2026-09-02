@@ -58,6 +58,7 @@ func New(st *store.Store, token string, webFS fs.FS, log *slog.Logger) http.Hand
 		r.Get("/search", s.search)
 		r.Get("/blob/{hash}", s.blob)
 		r.Get("/note/*", s.note)
+		r.Get("/history/*", s.history)
 		r.Put("/files/*", s.put)
 		r.Delete("/files/*", s.del)
 		r.Get("/stream", s.stream)
@@ -175,6 +176,16 @@ func (s *Server) note(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, n)
+}
+
+func (s *Server) history(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	versions, err := s.st.History(pathParam(r), limit)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"versions": versions})
 }
 
 func (s *Server) put(w http.ResponseWriter, r *http.Request) {

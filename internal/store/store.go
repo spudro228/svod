@@ -384,6 +384,31 @@ func (s *Store) Search(q string, limit int) ([]proto.SearchHit, error) {
 	return out, rows.Err()
 }
 
+// History отдаёт все версии пути, свежие первыми.
+func (s *Store) History(path string, limit int) ([]proto.Version, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT seq, hash, deleted, at, device
+		FROM versions WHERE path=? ORDER BY seq DESC LIMIT ?`, path, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []proto.Version{}
+	for rows.Next() {
+		var v proto.Version
+		var del int
+		if err := rows.Scan(&v.Seq, &v.Hash, &del, &v.At, &v.Device); err != nil {
+			return nil, err
+		}
+		v.Deleted = del == 1
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
 // Blob читает содержимое по хешу.
 func (s *Store) Blob(hash string) ([]byte, error) {
 	if len(hash) < 4 {

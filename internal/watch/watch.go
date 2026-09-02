@@ -24,6 +24,7 @@ const Debounce = 500 * time.Millisecond
 var DefaultIgnores = []string{
 	".svod/", ".git/", ".obsidian/workspace.json", ".obsidian/cache",
 	".DS_Store", "*.swp", "*.swx", "*~", ".Trash/", "node_modules/",
+	".svod-*.tmp", // временные файлы собственной атомарной записи
 }
 
 // Ignore решает, попадает ли путь в свод.
