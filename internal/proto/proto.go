@@ -73,20 +73,20 @@ type Heading struct {
 
 // Note — содержимое плюс всё, что сервер разобрал из markdown.
 type Note struct {
-	Path      string    `json:"path"`
-	Hash      string    `json:"hash"`
-	Seq       int64     `json:"seq"`
-	Size      int64     `json:"size"`
-	ModTime   int64     `json:"mtime"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	Headings  []Heading `json:"headings"`
-	Tags      []string  `json:"tags"`
-	Links     []string  `json:"links"`
-	Backlinks []string  `json:"backlinks"`
-	Aliases   []string  `json:"aliases,omitempty"`
+	Path      string            `json:"path"`
+	Hash      string            `json:"hash"`
+	Seq       int64             `json:"seq"`
+	Size      int64             `json:"size"`
+	ModTime   int64             `json:"mtime"`
+	Title     string            `json:"title"`
+	Content   string            `json:"content"`
+	Headings  []Heading         `json:"headings"`
+	Tags      []string          `json:"tags"`
+	Links     []string          `json:"links"`
+	Backlinks []string          `json:"backlinks"`
+	Aliases   []string          `json:"aliases,omitempty"`
 	Meta      map[string]string `json:"meta,omitempty"`
-	Binary    bool      `json:"binary,omitempty"`
+	Binary    bool              `json:"binary,omitempty"`
 }
 
 // Version — одна запись в истории пути.
@@ -96,6 +96,15 @@ type Version struct {
 	Deleted bool   `json:"deleted,omitempty"`
 	At      int64  `json:"at"`
 	Device  string `json:"device"`
+}
+
+// Share — временная ссылка на просмотр одной заметки без токена.
+type Share struct {
+	Key     string `json:"key"`
+	Path    string `json:"path"`
+	Created int64  `json:"created"`
+	Expires int64  `json:"expires"`
+	URL     string `json:"url,omitempty"`
 }
 
 // SearchHit — одно попадание полнотекстового поиска.

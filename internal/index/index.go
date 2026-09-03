@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/yuin/goldmark"
+	meta "github.com/yuin/goldmark-meta"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
-	meta "github.com/yuin/goldmark-meta"
 
 	"github.com/spudro228/svod/internal/proto"
 )
@@ -23,6 +23,8 @@ import (
 var (
 	// [[путь/файл]] или [[путь/файл|подпись]]
 	reWiki = regexp.MustCompile(`\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]`)
+	// ![[вложение.png]] — обсидиановский синтаксис встраивания
+	reEmbed = regexp.MustCompile(`!\[\[([^\[\]|]+)(?:\|[^\[\]]*)?\]\]`)
 	// #тег — латиница, кириллица, цифры, дефис, подчёркивание, слеш
 	reTag = regexp.MustCompile(`(^|\s)#([\p{L}\d][\p{L}\d_/-]*)`)
 	// небезопасные для якоря символы
@@ -32,10 +34,13 @@ var (
 
 // Parsed — всё, что мы вытащили из одной заметки.
 type Parsed struct {
-	Title       string
-	Headings    []proto.Heading
-	Tags        []string
-	Links       []string
+	Title    string
+	Headings []proto.Heading
+	Tags     []string
+	Links    []string
+	// Embeds — вложения, встроенные в текст. Нужны отдельно от Links:
+	// по временной ссылке гостю открывают доступ ровно к ним.
+	Embeds      []string
 	Aliases     []string
 	Frontmatter map[string]string
 	Body        string // плоский текст для полнотекстового поиска
@@ -49,6 +54,7 @@ func Parse(src []byte) Parsed {
 		Headings:    []proto.Heading{},
 		Tags:        []string{},
 		Links:       []string{},
+		Embeds:      []string{},
 		Aliases:     []string{},
 		Frontmatter: map[string]string{},
 	}
@@ -114,6 +120,13 @@ func Parse(src []byte) Parsed {
 			// Содержимое кода не индексируем и не сканируем на ссылки.
 			return ast.WalkSkipChildren, nil
 
+		case *ast.Image:
+			// Обычные картинки markdown: цель лежит в узле, а не в тексте.
+			if dst := strings.TrimSpace(string(node.Destination)); dst != "" {
+				p.Embeds = append(p.Embeds, Normalize(dst))
+			}
+			return ast.WalkSkipChildren, nil
+
 		case *ast.Text:
 			plain.Write(node.Segment.Value(src))
 			if node.SoftLineBreak() || node.HardLineBreak() {
@@ -124,6 +137,23 @@ func Parse(src []byte) Parsed {
 	})
 
 	p.Body = plain.String()
+
+	embedSeen := map[string]bool{}
+	for _, e := range p.Embeds {
+		embedSeen[e] = true
+	}
+	p.Embeds = p.Embeds[:0]
+	for e := range embedSeen {
+		p.Embeds = append(p.Embeds, e)
+	}
+	// ![[…]] остаётся для goldmark простым текстом, поэтому ловим отдельно.
+	for _, m := range reEmbed.FindAllStringSubmatch(p.Body, -1) {
+		target := strings.TrimSpace(m[1])
+		if target != "" && !embedSeen[target] {
+			embedSeen[target] = true
+			p.Embeds = append(p.Embeds, target)
+		}
+	}
 
 	linkSeen := map[string]bool{}
 	for _, m := range reWiki.FindAllStringSubmatch(p.Body, -1) {

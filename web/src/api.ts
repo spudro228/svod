@@ -31,6 +31,14 @@ export type Note = {
 
 export type SearchHit = { path: string; title: string; snippet: string }
 
+export type Share = {
+  key: string
+  path: string
+  created: number
+  expires: number
+  url: string
+}
+
 export type Version = {
   seq: number
   hash: string
@@ -113,6 +121,25 @@ export const api = {
   history: (path: string) =>
     get<{ versions: Version[] }>(`/api/v1/history/${encodePath(path)}`),
   tags: () => get<{ tags: Record<string, number> }>('/api/v1/tags'),
+
+  /** Временные ссылки: выдать, перечислить, отозвать. */
+  shares: () => get<{ shares: Share[] }>('/api/v1/share'),
+
+  async share(path: string, hours: number): Promise<Share> {
+    const res = await fetch('/api/v1/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, hours }),
+    })
+    if (res.status === 401) throw new UnauthorizedError()
+    if (!res.ok) throw new Error(`Не смог выдать ссылку: ${res.status}`)
+    return (await res.json()) as Share
+  },
+
+  async revokeShare(key: string): Promise<void> {
+    const res = await fetch(`/api/v1/share/${encodeURIComponent(key)}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`Не смог отозвать: ${res.status}`)
+  },
   byTag: (tag: string) =>
     get<{ paths: string[] }>(`/api/v1/tags?tag=${encodeURIComponent(tag)}`),
 

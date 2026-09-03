@@ -82,6 +82,9 @@ func Open(dir string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("схема: %w", err)
 	}
+	if _, err := db.Exec(shareSchema); err != nil {
+		return nil, fmt.Errorf("схема ссылок: %w", err)
+	}
 
 	s := &Store{db: db, blobDir: filepath.Join(dir, "blobs")}
 
