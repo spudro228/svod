@@ -26,14 +26,21 @@
       - unattended-upgrades
     state: present
 
-- name: Узнать текущий часовой пояс
-  ansible.builtin.command: timedatectl show --property=Timezone --value
-  register: svod_current_tz
-  changed_when: false
+# Через файлы, а не timedatectl: на образах без dbus он падает
+# с «Transport endpoint is not connected» и роняет весь прогон.
+- name: Часовой пояс — файл
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    content: "{{ svod_timezone }}\n"
+    mode: "0644"
+  notify: Перечитать часовой пояс
 
-- name: Часовой пояс
-  ansible.builtin.command: timedatectl set-timezone {{ svod_timezone }}
-  when: svod_current_tz.stdout != svod_timezone
+- name: Часовой пояс — ссылка
+  ansible.builtin.file:
+    src: /usr/share/zoneinfo/{{ svod_timezone }}
+    dest: /etc/localtime
+    state: link
+    force: true
 
 - name: Включить автоматические обновления безопасности
   ansible.builtin.copy:
@@ -48,9 +55,12 @@
   register: svod_ufw_default
   changed_when: "'updated' in svod_ufw_default.stdout"
 
+# 22/tcp дублирует профиль OpenSSH намеренно: если профиля в системе
+# не окажется, включение файрвола отрежет нас от сервера.
 - name: Открыть ssh, http и https
   ansible.builtin.command: ufw allow {{ item }}
   loop:
+    - 22/tcp
     - OpenSSH
     - 80/tcp
     - 443/tcp

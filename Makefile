@@ -66,11 +66,14 @@ clean:
 # ── Выкладка на VPS ───────────────────────────────────────────────────
 
 IMAGE ?= svod:latest
+# Архитектура сервера, а не своей машины: собранный на Apple Silicon
+# arm64-образ на обычном VPS падает с exec format error.
+PLATFORM ?= linux/amd64
 
 # Образ собираем у себя и отправляем архивом: реестр не нужен,
 # работает с первого дня.
 image:
-	docker build -t $(IMAGE) .
+	docker build --platform $(PLATFORM) -t $(IMAGE) .
 	mkdir -p deploy/.build
 	docker save $(IMAGE) | gzip > deploy/.build/$(subst :,-,$(IMAGE)).tar.gz
 	@ls -lh deploy/.build/$(subst :,-,$(IMAGE)).tar.gz
