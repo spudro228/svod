@@ -10,7 +10,17 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        share: 'share.html',
+        // Гостевой странице нужен только набор формул: разметку присылает
+        // сервер готовой. Имена файлов фиксированы, потому что на них
+        // ссылается сам сервер.
+        math: 'src/math.ts',
+        guest: 'src/guest.css',
+      },
+      output: {
+        entryFileNames: (chunk) =>
+          chunk.name === 'math' ? 'assets/math.js' : 'assets/[name]-[hash].js',
+        assetFileNames: (info) =>
+          info.names?.[0] === 'guest.css' ? 'assets/guest.css' : 'assets/[name]-[hash][extname]',
       },
     },
     outDir: '../internal/webui/dist',

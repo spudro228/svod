@@ -1,0 +1,28 @@
+# Свод — личное хранилище. Поисковикам здесь делать нечего.
+#
+# Превью ссылок в мессенджерах при этом нужны, а их краулеры уважают
+# те же правила, что и поисковые. Поэтому они перечислены явно:
+# запрет для всех, разрешение для тех, кто рисует карточку.
+
+User-agent: TelegramBot
+Allow: /s/
+Disallow: /
+
+User-agent: Twitterbot
+Allow: /s/
+Disallow: /
+
+User-agent: WhatsApp
+Allow: /s/
+Disallow: /
+
+User-agent: Slackbot-LinkExpanding
+Allow: /s/
+Disallow: /
+
+User-agent: Discordbot
+Allow: /s/
+Disallow: /
+
+User-agent: *
+Disallow: /

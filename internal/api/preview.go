@@ -12,9 +12,12 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/spudro228/svod/internal/index"
+	"github.com/spudro228/svod/internal/proto"
+	"github.com/spudro228/svod/internal/render"
 )
 
 // Карточка ссылки для мессенджеров и соцсетей.
@@ -55,26 +58,88 @@ func (s *Server) sharePreview(w http.ResponseWriter, r *http.Request, webFS fs.F
 		key = key[:i]
 	}
 
-	meta := ""
-	if sh, _, err := s.st.Share(key); err == nil {
+	meta, body := "", ""
+	if sh, allowed, err := s.st.Share(key); err == nil {
 		if note, err := s.st.Note(sh.Path); err == nil {
 			img, w, hgt, format := s.previewImage(r, key, note.Content)
 			meta = ogTags(note.Title, excerpt(note.Content), shareURL(r, key), img, w, hgt, format)
+			body = s.guestBody(r, key, allowed, note)
 		}
 	}
-	// Недействительная ссылка отдаёт страницу без карточки: краулер
-	// не должен по разнице ответов узнавать, существовал ли ключ.
+	if body == "" {
+		// Недействительная ссылка отдаёт страницу без карточки, но с
+		// объяснением. Отозванная, истекшая и несуществующая выглядят
+		// одинаково: иначе по разнице ответов можно перебирать ключи.
+		body = `<div class="guest"><div class="guest-card">` +
+			`<h1>Ссылка не работает</h1>` +
+			`<p>Она истекла или была отозвана.</p></div></div>`
+	}
 
 	out := string(page)
 	if meta != "" {
 		out = reTitleTag.ReplaceAllString(out, "")
 	}
 	out = strings.Replace(out, "</head>", meta+"</head>", 1)
+	// Заметка отрисована здесь, а не в браузере: иначе гостю пришлось бы
+	// скачать сто килобайт разметчика и сделать второй запрос за текстом,
+	// который сервер и так знает.
+	if body != "" {
+		out = strings.Replace(out, `<div id="root"></div>`, body, 1)
+	}
 
-	noIndex(w)
+	// noindex здесь намеренно не ставится: краулеры мессенджеров уважают
+	// эту директиву и отказываются рисовать карточку. От поисковиков
+	// защищает robots.txt плюс неугадываемый ключ из 32 байт — найти
+	// такую ссылку можно только получив её от владельца.
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(out))
 	return true
+}
+
+// guestBody собирает готовую страницу заметки.
+func (s *Server) guestBody(r *http.Request, key string, allowed []string, note proto.Note) string {
+	scheme := "http"
+	if isHTTPS(r) {
+		scheme = "https"
+	}
+	base := scheme + "://" + r.Host + "/api/v1/shared/" + key + "/asset/"
+
+	// Адрес выдаётся только для вложений, разрешённых этой ссылкой:
+	// остальные для гостя не существуют.
+	asset := func(target string) string {
+		resolved := s.resolveShared(note.Path, target)
+		if resolved == "" {
+			return ""
+		}
+		hash, err := s.st.Hash(resolved)
+		if err != nil || hash == "" || !contains(allowed, hash) {
+			return ""
+		}
+		segments := strings.Split(target, "/")
+		for i, seg := range segments {
+			segments[i] = urlEscape(seg)
+		}
+		return base + strings.Join(segments, "/")
+	}
+
+	content := render.HTML([]byte(note.Content), render.Options{Asset: asset})
+
+	var b strings.Builder
+	b.WriteString(`<div class="guest"><article class="guest-note">`)
+	b.WriteString(`<h1>` + html.EscapeString(note.Title) + `</h1>`)
+	b.WriteString(`<div class="guest-meta">` +
+		html.EscapeString(time.Unix(note.ModTime, 0).Format("2 January 2006")) + `</div>`)
+	b.WriteString(`<div class="md">` + content + `</div>`)
+	b.WriteString(`<footer class="guest-foot">Временная ссылка из Свода.</footer>`)
+	b.WriteString(`</article></div>`)
+
+	// Формулы набирает KaTeX уже в браузере: годной библиотеки для Go нет.
+	// Скрипт подключаем только когда формулы в заметке действительно есть.
+	if render.HasMath(content) {
+		b.WriteString(`<script type="module" src="/assets/math.js"></script>`)
+	}
+	return b.String()
 }
 
 // ogTags собирает шапку карточки. Всё пользовательское экранируется:

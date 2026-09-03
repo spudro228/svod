@@ -492,3 +492,70 @@ test('верный токен пускает и вход запоминаетс�
 
   await ctx.close()
 })
+
+test('гостевая страница отрисована сервером и работает без JavaScript', async ({ page, browser }) => {
+  const path = `${uniq('БезСкриптов')}.md`
+  await seed(
+    path,
+    '# Без скриптов\n\nАбзац текста, тег #проверка и `код`.\n\n- [x] сделано\n- [ ] нет\n',
+  )
+
+  await openApp(page)
+  await openNote(page, path)
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+  const url = await page.locator('.share-result input').inputValue()
+
+  // Скрипты выключены: всё, что видно, пришло с сервера готовым.
+  const guest = await browser.newContext({
+    javaScriptEnabled: false,
+    storageState: { cookies: [], origins: [] },
+  })
+  const guestPage = await guest.newPage()
+  await guestPage.goto(url)
+
+  await expect(guestPage.locator('.guest-note h1')).toHaveText('Без скриптов')
+  await expect(guestPage.locator('.md')).toContainText('Абзац текста')
+  await expect(guestPage.locator('.md .tag')).toHaveText('#проверка')
+  await expect(guestPage.locator('.md code')).toHaveText('код')
+  await expect(guestPage.locator('.md input[type=checkbox]')).toHaveCount(2)
+
+  await guest.close()
+})
+
+test('гостевая страница не тянет разметчик и приложение', async ({ page, browser }) => {
+  const path = `${uniq('Лёгкая')}.md`
+  await seed(path, '# Лёгкая\n\nтекст\n')
+
+  await openApp(page)
+  await openNote(page, path)
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+  const url = await page.locator('.share-result input').inputValue()
+
+  const guest = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const guestPage = await guest.newPage()
+
+  const loaded: string[] = []
+  let bytes = 0
+  guestPage.on('response', async (r) => {
+    loaded.push(new URL(r.url()).pathname)
+    try {
+      bytes += (await r.body()).length
+    } catch {
+      // тело могло быть недоступно — на подсчёт это не влияет
+    }
+  })
+
+  await guestPage.goto(url, { waitUntil: 'networkidle' })
+  await expect(guestPage.locator('.guest-note h1')).toHaveText('Лёгкая')
+
+  // Приложение и разметчик гостю не нужны: текст уже отрисован.
+  const heavy = loaded.filter((p) => p.includes('main-') || p.includes('editor-'))
+  expect(heavy, `гость скачал лишнее: ${heavy.join(', ')}`).toHaveLength(0)
+
+  // Одна страница плюс стили — десятков килобайт тут быть не должно.
+  expect(bytes, `скачано ${(bytes / 1024).toFixed(1)} КБ`).toBeLessThan(60 * 1024)
+
+  await guest.close()
+})
