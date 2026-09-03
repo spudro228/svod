@@ -22,7 +22,10 @@ const Debounce = 500 * time.Millisecond
 
 // DefaultIgnores — то, что не синхронизируется никогда.
 var DefaultIgnores = []string{
-	".svod/", ".git/", ".obsidian/workspace.json", ".obsidian/cache",
+	// .obsidian целиком: это настройки приложения, а не знания. Obsidian
+	// переписывает их при каждом чихе, и между машинами они дали бы
+	// поток конфликтных копий на ровном месте.
+	".svod/", ".git/", ".obsidian/",
 	".DS_Store", "*.swp", "*.swx", "*~", ".Trash/", "node_modules/",
 	".svod-*.tmp", // временные файлы собственной атомарной записи
 }

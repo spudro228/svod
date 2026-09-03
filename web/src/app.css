@@ -468,3 +468,27 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .login-card button:hover:not(:disabled) { background: var(--accent-bg); }
 .login-card button:disabled { opacity: 0.45; cursor: default; }
 .login-err { margin: 0; font-size: 13px; color: var(--danger); }
+
+/* ───────────── Формулы ───────────── */
+
+.md .math-block {
+  margin: 16px 0 0;
+  /* Длинная выкладка не должна разъезжать страницу вбок */
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+.md .katex { font-size: 1.05em; }
+.md .katex-display { margin: 0; }
+
+/* Пока KaTeX грузится — показываем исходник, а не пустоту */
+.md .math-raw {
+  color: var(--fg-dim);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+.md .math-err {
+  color: var(--danger);
+  border: 1px dashed var(--danger);
+  background: none;
+}

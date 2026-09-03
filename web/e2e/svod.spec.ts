@@ -261,3 +261,41 @@ test('история версий растёт после правки', async (
   await expect(page.locator('.history')).toContainText('тест')
   expect(await fetchHash(path)).toHaveLength(64)
 })
+
+// ───────────────────────── формулы ─────────────────────────
+
+test('формулы LaTeX набираются, а не остаются исходником', async ({ page }) => {
+  const path = `${uniq('Формулы')}.md`
+  await seed(
+    path,
+    '# Формулы\n\nНеравенство треугольника $|a + b| \\leq |a| + |b|$ и предел:\n\n' +
+      '$$\\lim_{n \\to \\infty} \\sqrt[n]{n} = 1$$\n',
+  )
+
+  await openApp(page)
+  await openNote(page, path)
+
+  // KaTeX подтягивается лениво, поэтому ждём появления его разметки.
+  await expect(page.locator('.md .katex').first()).toBeVisible()
+  await expect(page.locator('.md .math-block .katex')).toHaveCount(1)
+
+  // Исходников на странице остаться не должно.
+  await expect(page.locator('.md .math-raw')).toHaveCount(0)
+  await expect(page.locator('.md')).not.toContainText('\\leq')
+})
+
+test('доллары в обычном тексте формулами не становятся', async ({ page }) => {
+  const path = `${uniq('Деньги')}.md`
+  await seed(
+    path,
+    '# Деньги и код\n\nПодписка стоит $5 в месяц, а годовая $50.\n\n' +
+      '```php\n$service->doWork($id, $name);\n```\n\nИ переменная `$HOME` в тексте.\n',
+  )
+
+  await openApp(page)
+  await openNote(page, path)
+
+  await expect(page.locator('.md .katex')).toHaveCount(0)
+  await expect(page.locator('.md')).toContainText('Подписка стоит $5 в месяц, а годовая $50.')
+  await expect(page.locator('.md pre code')).toContainText('$service->doWork($id, $name);')
+})

@@ -5,6 +5,131 @@
 
 import MarkdownIt from 'markdown-it'
 import type { PluginSimple } from 'markdown-it'
+import type KatexNamespace from 'katex'
+
+// ───────────────────────── формулы ─────────────────────────
+//
+// KaTeX со шрифтами весит четыре мегабайта, а формулы есть в считанных
+// заметках. Поэтому он подгружается лениво: до загрузки формула
+// показывается исходником, после — набирается по-настоящему.
+
+let katex: typeof KatexNamespace | null = null
+
+/** Есть ли в тексте формулы — чтобы не тащить KaTeX ради обычной заметки. */
+export function hasMath(src: string): boolean {
+  return /\$\$[\s\S]+?\$\$/.test(src) || /(?<!\$)\$(?!\$)[^\n$]+\$(?!\$)/.test(src)
+}
+
+/** Подгружает KaTeX вместе с его стилями. Повторные вызовы бесплатны. */
+export async function ensureMath(): Promise<void> {
+  if (katex) return
+  const [mod] = await Promise.all([import('katex'), import('katex/dist/katex.min.css')])
+  katex = mod.default
+}
+
+function renderTex(md: MarkdownIt, tex: string, display: boolean): string {
+  if (!katex) {
+    return `<code class="math-raw">${md.utils.escapeHtml(tex)}</code>`
+  }
+  try {
+    return katex.renderToString(tex, {
+      displayMode: display,
+      throwOnError: false,
+      strict: false,
+      output: 'html',
+    })
+  } catch {
+    // Битую формулу показываем как есть: потерять её хуже, чем показать сырой.
+    return `<code class="math-err" title="не разобрал формулу">${md.utils.escapeHtml(tex)}</code>`
+  }
+}
+
+/**
+ * $…$ и $$…$$.
+ *
+ * Правила заимствованы у общепринятых реализаций и нужны, чтобы не портить
+ * обычный текст: после открывающего доллара не должно быть пробела, перед
+ * закрывающим тоже, а за закрывающим не должно идти цифры — иначе
+ * «заплатил $5 и $10» превратилось бы в формулу.
+ */
+const math: PluginSimple = (md) => {
+  // Блочные формулы: $$ в начале строки, возможно на несколько строк.
+  md.block.ruler.before('fence', 'math_block', (state, startLine, endLine, silent) => {
+    const start = state.bMarks[startLine] + state.tShift[startLine]
+    const max = state.eMarks[startLine]
+    if (start + 2 > max) return false
+    if (state.src.slice(start, start + 2) !== '$$') return false
+
+    let line = startLine
+    let found = false
+    let content = ''
+
+    const firstLine = state.src.slice(start + 2, max)
+    if (firstLine.trimEnd().endsWith('$$')) {
+      content = firstLine.trimEnd().slice(0, -2)
+      found = true
+    } else {
+      content = firstLine
+      while (!found && ++line < endLine) {
+        const from = state.bMarks[line] + state.tShift[line]
+        const to = state.eMarks[line]
+        const text = state.src.slice(from, to)
+        if (text.trimEnd().endsWith('$$')) {
+          content += '\n' + text.trimEnd().slice(0, -2)
+          found = true
+        } else {
+          content += '\n' + text
+        }
+      }
+    }
+    if (!found) return false
+    if (silent) return true
+
+    const token = state.push('math_block', '', 0)
+    token.content = content.trim()
+    token.map = [startLine, line + 1]
+    state.line = line + 1
+    return true
+  })
+
+  md.inline.ruler.after('escape', 'math_inline', (state, silent) => {
+    const src = state.src
+    const pos = state.pos
+    if (src.charCodeAt(pos) !== 0x24) return false // $
+
+    const display = src.charCodeAt(pos + 1) === 0x24
+    const marker = display ? '$$' : '$'
+    const from = pos + marker.length
+
+    // Формула не переносится через строку — иначе доллары из соседних
+    // абзацев склеились бы в одну «формулу».
+    const nl = src.indexOf('\n', from)
+    const limit = nl < 0 ? src.length : nl
+    const end = src.indexOf(marker, from)
+    if (end < 0 || end >= limit) return false
+
+    const tex = src.slice(from, end)
+    if (tex.trim() === '') return false
+    if (!display) {
+      if (/\s/.test(tex[0]) || /\s/.test(tex[tex.length - 1])) return false
+      if (/\d/.test(src[end + 1] ?? '')) return false
+    }
+
+    if (!silent) {
+      const token = state.push('math_inline', '', 0)
+      token.content = tex
+      token.markup = marker
+    }
+    state.pos = end + marker.length
+    return true
+  })
+
+  md.renderer.rules.math_block = (tokens, idx) =>
+    `<div class="math-block">${renderTex(md, tokens[idx].content, true)}</div>`
+
+  md.renderer.rules.math_inline = (tokens, idx) =>
+    renderTex(md, tokens[idx].content, tokens[idx].markup === '$$')
+}
 
 /**
  * [[путь/файл]], [[путь/файл|подпись]] и ![[вложение.png]].
@@ -131,6 +256,7 @@ const md = new MarkdownIt({
   .use(tags)
   .use(tasklists)
   .use(images)
+  .use(math)
 
 /**
  * Рендер заметки.
