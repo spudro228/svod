@@ -31,8 +31,11 @@ func main() {
 		token  = flag.String("token", os.Getenv("SVOD_TOKEN"), "токен доступа")
 		device = flag.String("device", env("SVOD_DEVICE", hostname()), "имя устройства для истории версий")
 		once   = flag.Bool("once", false, "синхронизировать один раз и выйти")
+		clone  = flag.Bool("clone", false, "скачать весь свод в пустую папку и выйти")
+		force  = flag.Bool("force", false, "разрешить clone в непустую папку")
 		status = flag.Bool("status", false, "показать состояние и выйти")
-		exts   = flag.String("ext", local.DefaultExts, "расширения через запятую; пусто — все файлы")
+		exts   = flag.String("ext", local.DefaultExts,
+			"ограничить расширениями через запятую; по умолчанию синхронизируется всё")
 	)
 	flag.Parse()
 
@@ -82,6 +85,14 @@ func main() {
 	defer stop()
 
 	log.Info("свод", "vault", root, "server", agent.Server, "device", agent.Device)
+
+	if *clone {
+		if err := runClone(ctx, agent, *force); err != nil {
+			log.Error("скачать не удалось", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Порядок важен: сначала забираем чужое, потом отдаём своё.
 	// Иначе локальная правка поверх устаревшей версии даст ложный конфликт.
@@ -133,6 +144,33 @@ func main() {
 		log.Error("слежение оборвалось", "err", err)
 	}
 	report(agent, log)
+}
+
+// runClone скачивает свод целиком, показывая, сколько осталось.
+func runClone(ctx context.Context, a *local.Agent, force bool) error {
+	start := time.Now()
+	var last time.Time
+
+	err := a.Clone(ctx, force, func(done, total int) {
+		// Печатаем не чаще двух раз в секунду и обязательно последнюю строку,
+		// иначе быстрый свод зальёт терминал сотнями строк.
+		if done < total && time.Since(last) < 500*time.Millisecond {
+			return
+		}
+		last = time.Now()
+		fmt.Printf("\rскачано %d из %d", done, total)
+		if done == total {
+			fmt.Println()
+		}
+	})
+	if err != nil {
+		fmt.Println()
+		return err
+	}
+
+	fmt.Printf("свод скачан в %s за %s\n", a.Vault, time.Since(start).Round(time.Millisecond))
+	fmt.Println("дальше запускай без -clone, чтобы держать папку в согласии с сервером")
+	return nil
 }
 
 func report(a *local.Agent, log *slog.Logger) {

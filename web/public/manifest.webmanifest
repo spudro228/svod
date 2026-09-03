@@ -1,0 +1,13 @@
+{
+  "name": "Свод",
+  "short_name": "Свод",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12171A",
+  "theme_color": "#12171A",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

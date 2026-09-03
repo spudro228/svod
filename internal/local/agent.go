@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -42,8 +43,11 @@ import (
 // PollInterval — страховка на случай, если WebSocket отвалился незаметно.
 const PollInterval = 30 * time.Second
 
-// DefaultExts — что синхронизируем по умолчанию: заметки и вложения к ним.
-const DefaultExts = ".md,.png,.jpg,.jpeg,.gif,.webp,.svg,.pdf"
+// DefaultExts пуст намеренно: свод — это папка пользователя целиком,
+// и «скачать всё» должно означать всё. Мусор отсекает список игнора
+// (.git, node_modules, файлы подкачки редакторов), а не белый список
+// расширений — с ним мимо проезжали .canvas, .base и прочее содержимое.
+const DefaultExts = ""
 
 type Agent struct {
 	Vault  string
@@ -560,4 +564,146 @@ func short(h string) string {
 		return h[:8]
 	}
 	return h
+}
+
+// ───────────────────────── первое скачивание ─────────────────────────
+
+// CloneWorkers — сколько файлов тянем одновременно. Блобы неизменяемы
+// и независимы, поэтому распараллеливание безопасно, а на глаз разница
+// между последовательной и параллельной загрузкой свода — секунды против
+// десятков секунд.
+const CloneWorkers = 8
+
+// ErrNotEmpty — в папке уже что-то лежит.
+var ErrNotEmpty = errors.New("папка не пуста")
+
+// Clone скачивает весь свод в пустую папку.
+//
+// Отдельная команда нужна не потому, что обычная синхронизация не справится
+// — справится, — а чтобы намерение было явным: на новой машине легко
+// перепутать папку и получить конфликтные копии вместо чистой копии свода.
+func (a *Agent) Clone(ctx context.Context, force bool, progress func(done, total int)) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if !force {
+		empty, err := dirIsEmpty(a.Vault)
+		if err != nil {
+			return err
+		}
+		if !empty {
+			return fmt.Errorf("%w: %s; запусти обычную синхронизацию или добавь -force",
+				ErrNotEmpty, a.Vault)
+		}
+	}
+
+	res, err := a.do(ctx, http.MethodGet, "/api/v1/tree", nil, nil)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("tree: %s: %s", res.Status, readErr(res.Body))
+	}
+
+	var tree proto.Tree
+	if err := json.NewDecoder(res.Body).Decode(&tree); err != nil {
+		return err
+	}
+
+	// Отбрасываем то, что на этой машине всё равно не синхронизируется.
+	files := make([]proto.FileMeta, 0, len(tree.Files))
+	for _, f := range tree.Files {
+		if !a.Ign.Match(f.Path) {
+			files = append(files, f)
+		}
+	}
+
+	var (
+		wg    sync.WaitGroup
+		mu    sync.Mutex
+		done  int
+		first error
+	)
+	jobs := make(chan proto.FileMeta)
+
+	for range CloneWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range jobs {
+				err := a.fetchInto(ctx, f)
+
+				mu.Lock()
+				done++
+				if err != nil && first == nil {
+					first = fmt.Errorf("%s: %w", f.Path, err)
+				}
+				n := done
+				mu.Unlock()
+
+				if err != nil {
+					a.Log.Warn("не скачал", "path", f.Path, "err", err)
+				}
+				if progress != nil {
+					progress(n, len(files))
+				}
+			}
+		}()
+	}
+
+	for _, f := range files {
+		select {
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return ctx.Err()
+		case jobs <- f:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	if first != nil {
+		return first
+	}
+	// Курсор ставим на момент снимка: всё, что случится после, доедет
+	// обычной синхронизацией.
+	return a.State.SetLastSeq(tree.Seq)
+}
+
+// fetchInto скачивает один файл и кладёт его на диск.
+func (a *Agent) fetchInto(ctx context.Context, f proto.FileMeta) error {
+	// Файл мог уже оказаться на месте — например, при повторном запуске
+	// после обрыва. Тогда достаточно запомнить хеш.
+	full := filepath.Join(a.Vault, filepath.FromSlash(f.Path))
+	if b, err := os.ReadFile(full); err == nil && store.HashOf(b) == f.Hash {
+		return a.State.Set(f.Path, f.Hash)
+	}
+
+	content, err := a.blob(ctx, f.Hash)
+	if err != nil {
+		return err
+	}
+	return a.writeFromServer(f.Path, content, f.Hash)
+}
+
+// dirIsEmpty считает папку пустой, если в ней нет ничего, кроме служебного
+// каталога самого демона.
+func dirIsEmpty(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		switch e.Name() {
+		case ".svod", ".DS_Store":
+			continue
+		}
+		return false, nil
+	}
+	return true, nil
 }

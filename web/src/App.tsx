@@ -11,7 +11,7 @@ import {
   type Version,
 } from './api'
 import type { EditorHandle } from './editor'
-import { headingId, renderNote } from './md'
+import { ensureMath, hasMath, headingId, renderNote } from './md'
 
 // ───────────────────────── дерево ─────────────────────────
 
@@ -612,7 +612,24 @@ function NoteView({
 }) {
   const readRef = useRef<HTMLDivElement>(null)
   const editRef = useRef<HTMLDivElement>(null)
-  const html = useMemo(() => renderNote(note.content), [note.content])
+
+  // KaTeX подтягивается только для заметок с формулами: со шрифтами он
+  // весит четыре мегабайта, и ради обычного текста это перебор.
+  const [mathReady, setMathReady] = useState(false)
+  const needsMath = useMemo(() => hasMath(note.content), [note.content])
+
+  useEffect(() => {
+    if (!needsMath || mathReady) return
+    let alive = true
+    void ensureMath().then(() => alive && setMathReady(true))
+    return () => {
+      alive = false
+    }
+  }, [needsMath, mathReady])
+
+  // mathReady в зависимостях намеренно: после загрузки KaTeX заметку
+  // нужно перерисовать, иначе формулы останутся исходниками.
+  const html = useMemo(() => renderNote(note.content), [note.content, mathReady])
 
   // Свежие обработчики держим в ссылках, чтобы редактор не пересоздавался
   // на каждое сохранение: пересоздание сбрасывает курсор и историю отмен.
