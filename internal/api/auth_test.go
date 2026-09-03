@@ -3,18 +3,29 @@ package api_test
 import (
 	"encoding/json"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/spudro228/svod/internal/api"
 	"github.com/spudro228/svod/internal/store"
 )
 
 const token = "секретный-токен-для-теста"
+
+// webFS подменяет собранный фронт: страницам достаточно того, что
+// карточка ссылки вклеивается перед закрывающим head.
+func webFS() fs.FS {
+	return fstest.MapFS{
+		"index.html": {Data: []byte("<html><head></head><body></body></html>")},
+		"share.html": {Data: []byte("<html><head></head><body><div id=root></div></body></html>")},
+	}
+}
 
 func newServer(t *testing.T, tok string) (*httptest.Server, *http.Client) {
 	t.Helper()
@@ -24,7 +35,7 @@ func newServer(t *testing.T, tok string) (*httptest.Server, *http.Client) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	srv := httptest.NewServer(api.New(st, tok, nil, nil,
+	srv := httptest.NewServer(api.New(st, tok, nil, webFS(),
 		slog.New(slog.NewTextHandler(io.Discard, nil))))
 	t.Cleanup(srv.Close)
 
