@@ -105,7 +105,7 @@ func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog
 	})
 
 	if webFS != nil {
-		r.NotFound(spaHandler(webFS))
+		r.NotFound(s.spaHandler(webFS))
 	}
 	return r
 }
@@ -457,7 +457,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 
 // spaHandler отдаёт собранный веб-клиент, а на неизвестные пути — index.html,
 // чтобы работала навигация внутри приложения.
-func spaHandler(webFS fs.FS) http.HandlerFunc {
+func (s *Server) spaHandler(webFS fs.FS) http.HandlerFunc {
 	files := http.FileServer(http.FS(webFS))
 	return func(w http.ResponseWriter, r *http.Request) {
 		p := strings.TrimPrefix(r.URL.Path, "/")
@@ -465,12 +465,10 @@ func spaHandler(webFS fs.FS) http.HandlerFunc {
 			p = "index.html"
 		}
 		// Гостю отдаём отдельную сборку: в ней нет кода, умеющего
-		// спрашивать дерево свода или поиск.
+		// спрашивать дерево свода или поиск. Заодно вклеиваем карточку
+		// ссылки — краулеры мессенджеров не выполняют JavaScript.
 		if strings.HasPrefix(r.URL.Path, "/s/") {
-			noIndex(w)
-			if page, err := fs.ReadFile(webFS, "share.html"); err == nil {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.Write(page)
+			if s.sharePreview(w, r, webFS) {
 				return
 			}
 		}
