@@ -39,6 +39,14 @@ export type Version = {
   device: string
 }
 
+/** Сервер не пустил: нужен вход. */
+export class UnauthorizedError extends Error {
+  constructor() {
+    super('нужен токен доступа')
+    this.name = 'UnauthorizedError'
+  }
+}
+
 /** Сервер отказался писать: там уже другая версия. */
 export class ConflictError extends Error {
   constructor(
@@ -64,6 +72,7 @@ export function rawURL(path: string): string {
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  if (res.status === 401) throw new UnauthorizedError()
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`
     try {
@@ -83,6 +92,24 @@ export const api = {
   note: (path: string) => get<Note>(`/api/v1/note/${encodePath(path)}`),
   search: (q: string) =>
     get<{ hits: SearchHit[] }>(`/api/v1/search?q=${encodeURIComponent(q)}&limit=50`),
+  /** Нужен ли вход и выполнен ли он. */
+  authState: () => get<{ required: boolean; authorized: boolean }>('/api/v1/auth'),
+
+  /** Меняет токен на сессионную куку — дальше браузер шлёт её сам. */
+  async login(token: string): Promise<void> {
+    const res = await fetch('/api/v1/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token.trim() }),
+    })
+    if (res.status === 401) throw new Error('Токен не подошёл')
+    if (!res.ok) throw new Error(`Сервер ответил ${res.status}`)
+  },
+
+  async logout(): Promise<void> {
+    await fetch('/api/v1/logout', { method: 'POST' })
+  },
+
   history: (path: string) =>
     get<{ versions: Version[] }>(`/api/v1/history/${encodePath(path)}`),
   tags: () => get<{ tags: Record<string, number> }>('/api/v1/tags'),
@@ -114,6 +141,7 @@ export const api = {
       headers,
       body: content,
     })
+    if (res.status === 401) throw new UnauthorizedError()
     if (res.status === 409) {
       const body = (await res.json()) as { server_hash: string; seq: number }
       throw new ConflictError(body.server_hash, body.seq)

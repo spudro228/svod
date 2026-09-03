@@ -403,3 +403,68 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .history .seq { font-family: var(--f-mono); font-size: 11px; color: var(--fg-faint); flex: none; }
 .history .when { font-family: var(--f-mono); font-size: 11px; }
 .history .dev { margin-left: auto; color: var(--fg-faint); flex: none; }
+
+/* ───────────── Вход ───────────── */
+
+.boot {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  font-family: var(--f-mono);
+  font-size: 12px;
+}
+
+.login {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  padding: 24px;
+}
+.login-card {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 28px 26px 26px;
+}
+.login-card h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.login-hint { margin: 0; font-size: 13px; line-height: 1.5; color: var(--fg-dim); }
+.login-hint code {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 4px;
+}
+.login-card input {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  padding: 9px 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--fg);
+  outline: none;
+}
+.login-card input:focus { border-color: var(--accent); }
+.login-card button {
+  padding: 9px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-size: 13px;
+}
+.login-card button:hover:not(:disabled) { background: var(--accent-bg); }
+.login-card button:disabled { opacity: 0.45; cursor: default; }
+.login-err { margin: 0; font-size: 13px; color: var(--danger); }

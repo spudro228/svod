@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   api,
   ConflictError,
+  UnauthorizedError,
   openStream,
   rawURL,
   type FileMeta,
@@ -104,6 +105,8 @@ export default function App() {
   const [showRight, setShowRight] = useState(true)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [theme, setTheme] = useState<Theme>(readTheme)
+  // null — ещё не спросили у сервера; false — вход нужен.
+  const [authed, setAuthed] = useState<boolean | null>(null)
 
   const editorRef = useRef<EditorHandle | null>(null)
   const tree = useMemo(() => buildTree(files), [files])
@@ -132,8 +135,13 @@ export default function App() {
       const t = await api.tree()
       setFiles(t.files)
       setSeq(t.seq)
+      setAuthed(true)
       setError(null)
     } catch (e) {
+      if (e instanceof UnauthorizedError) {
+        setAuthed(false)
+        return
+      }
       setError(e instanceof Error ? e.message : String(e))
     }
   }, [])
@@ -218,8 +226,17 @@ export default function App() {
     }
   }, [path])
 
-  // Первая загрузка и живой поток изменений.
+  // Сначала выясняем, нужен ли вход: без него всё остальное вернёт 401.
   useEffect(() => {
+    void api
+      .authState()
+      .then((st) => setAuthed(st.authorized))
+      .catch(() => setAuthed(false))
+  }, [])
+
+  // Данные и живой поток — только после входа.
+  useEffect(() => {
+    if (authed !== true) return
     void loadTree()
     const close = openStream(
       (newSeq) => {
@@ -230,7 +247,7 @@ export default function App() {
       (up) => setOnline(up),
     )
     return close
-  }, [loadTree])
+  }, [loadTree, authed])
 
   // Заметка обновляется, когда её версия уехала вперёд — но не поверх
   // несохранённых правок.
@@ -310,6 +327,13 @@ export default function App() {
 
   const editable = note !== null && !note.binary
 
+  if (authed === null) {
+    return <div className="boot">Свод открывается…</div>
+  }
+  if (authed === false) {
+    return <Login onDone={() => setAuthed(true)} theme={theme} />
+  }
+
   return (
     <div className="app">
       <TopBar
@@ -382,6 +406,56 @@ export default function App() {
       {overlay && (
         <Palette kind={overlay} files={files} onClose={() => setOverlay(null)} onOpen={open} />
       )}
+    </div>
+  )
+}
+
+function Login({ onDone, theme }: { onDone: () => void; theme: Theme }) {
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy || token.trim() === '') return
+    setBusy(true)
+    setErr(null)
+    try {
+      await api.login(token)
+      onDone()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="login">
+      <form className="login-card" onSubmit={submit}>
+        <h1>Свод</h1>
+        <p className="login-hint">
+          Введи токен доступа. Он лежит в <code>deploy/.svod-token</code> —
+          тот же, которым ходит демон.
+        </p>
+        <input
+          autoFocus
+          type="password"
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          placeholder="Токен"
+          spellCheck={false}
+          autoComplete="current-password"
+        />
+        {err && <p className="login-err">{err}</p>}
+        <button type="submit" disabled={busy || token.trim() === ''}>
+          {busy ? 'Проверяю…' : 'Войти'}
+        </button>
+      </form>
     </div>
   )
 }

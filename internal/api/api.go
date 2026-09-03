@@ -6,6 +6,9 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -32,9 +35,12 @@ import (
 // Заметка столько не весит, а картинка вполне может.
 const maxFileSize = 32 << 20
 
+const sessionCookie = "svod_session"
+
 type Server struct {
 	st      *store.Store
 	token   string
+	session string // хеш токена: в куке лежит он, а не сам токен
 	origins []string
 	hub     *hub
 	log     *slog.Logger
@@ -51,6 +57,10 @@ type Server struct {
 // Заполнять нужно лишь для дев-сервера vite, который проксирует с другого порта.
 func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog.Logger) http.Handler {
 	s := &Server{st: st, token: token, origins: origins, hub: newHub(), log: log}
+	if token != "" {
+		sum := sha256.Sum256([]byte("svod-session:" + token))
+		s.session = hex.EncodeToString(sum[:])
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -62,19 +72,27 @@ func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog
 	r.Get("/healthz", s.health)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(s.auth)
+		// Вход и выход — единственные ручки без проверки токена:
+		// иначе войти было бы нечем.
+		r.Post("/auth", s.login)
+		r.Post("/logout", s.logout)
+		r.Get("/auth", s.authState)
 
-		r.Get("/tree", s.tree)
-		r.Get("/changes", s.changes)
-		r.Get("/search", s.search)
-		r.Get("/blob/{hash}", s.blob)
-		r.Get("/note/*", s.note)
-		r.Get("/history/*", s.history)
-		r.Get("/raw/*", s.raw)
-		r.Get("/tags", s.tags)
-		r.Put("/files/*", s.put)
-		r.Delete("/files/*", s.del)
-		r.Get("/stream", s.stream)
+		r.Group(func(r chi.Router) {
+			r.Use(s.auth)
+
+			r.Get("/tree", s.tree)
+			r.Get("/changes", s.changes)
+			r.Get("/search", s.search)
+			r.Get("/blob/{hash}", s.blob)
+			r.Get("/note/*", s.note)
+			r.Get("/history/*", s.history)
+			r.Get("/raw/*", s.raw)
+			r.Get("/tags", s.tags)
+			r.Put("/files/*", s.put)
+			r.Delete("/files/*", s.del)
+			r.Get("/stream", s.stream)
+		})
 	})
 
 	if webFS != nil {
@@ -94,11 +112,12 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if bearer(r) == s.token {
+		if subtle.ConstantTimeCompare([]byte(bearer(r)), []byte(s.token)) == 1 {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if c, err := r.Cookie("svod_session"); err == nil && c.Value == s.token {
+		if c, err := r.Cookie(sessionCookie); err == nil &&
+			subtle.ConstantTimeCompare([]byte(c.Value), []byte(s.session)) == 1 {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -117,6 +136,75 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 				"status", ww.Status(), "ms", time.Since(start).Milliseconds())
 		}
 	})
+}
+
+// ───────────────────────── вход ─────────────────────────
+
+// authState сообщает странице, нужен ли вообще вход и выполнен ли он.
+func (s *Server) authState(w http.ResponseWriter, r *http.Request) {
+	if s.token == "" {
+		writeJSON(w, http.StatusOK, map[string]bool{"required": false, "authorized": true})
+		return
+	}
+	c, err := r.Cookie(sessionCookie)
+	ok := err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(s.session)) == 1
+	writeJSON(w, http.StatusOK, map[string]bool{"required": true, "authorized": ok})
+}
+
+// login меняет токен на сессионную куку.
+//
+// В куку кладём хеш токена, а не его самого: утечка куки не даёт
+// ключа, которым ходят демоны.
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if s.token == "" {
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "не разобрал запрос")
+		return
+	}
+
+	if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(req.Token)), []byte(s.token)) != 1 {
+		// Небольшая задержка, чтобы подбор был ещё и медленным.
+		time.Sleep(500 * time.Millisecond)
+		writeErr(w, http.StatusUnauthorized, "неверный токен")
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    s.session,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   30 * 24 * 3600,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   isHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// isHTTPS учитывает, что за Caddy соединение до сервера идёт открытым,
+// а признак защищённости приезжает заголовком.
+func isHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
 // ───────────────────────── хендлеры ─────────────────────────
