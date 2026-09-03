@@ -1,0 +1,32 @@
+# ── Что и куда ставим ─────────────────────────────────────────────────
+svod_dir: /opt/svod
+svod_data_dir: /opt/svod/data
+svod_backup_dir: /var/backups/svod
+
+# Пользователь внутри контейнера. Каталог данных на хосте должен
+# принадлежать ему, иначе сервер не сможет писать.
+svod_uid: 10001
+svod_gid: 10001
+
+# ── Откуда берём образ ────────────────────────────────────────────────
+# archive  — собираем на своей машине и отправляем по ssh. Реестр не нужен,
+#            работает сразу. Это значение по умолчанию.
+# registry — тянем готовый образ; заполни svod_image_registry.
+svod_image_source: archive
+svod_image_name: svod
+svod_image_tag: latest
+svod_image_registry: ""   # например ghcr.io/spudro228
+
+# ── Сеть ──────────────────────────────────────────────────────────────
+# Сервер наружу не публикуется: снаружи только Caddy на 80 и 443.
+svod_caddy_image: "caddy:2-alpine"
+
+# ── Обслуживание ──────────────────────────────────────────────────────
+svod_timezone: Europe/Moscow
+svod_backup_hour: "4"
+svod_backup_keep_days: 30
+
+# ── Доступ ────────────────────────────────────────────────────────────
+# Токен генерируется один раз и запоминается в deploy/.svod-token.
+# Тот же токен нужно передать демону на каждой машине.
+svod_token: "{{ lookup('ansible.builtin.password', playbook_dir + '/.svod-token length=48 chars=ascii_letters,digits') }}"

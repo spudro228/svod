@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,8 @@ func main() {
 		addr  = flag.String("addr", env("SVOD_ADDR", ":8080"), "адрес прослушивания")
 		data  = flag.String("data", env("SVOD_DATA", "./data"), "каталог с meta.db и blobs/")
 		token = flag.String("token", os.Getenv("SVOD_TOKEN"), "токен доступа; пустой отключает проверку")
+		origins = flag.String("origins", os.Getenv("SVOD_ORIGINS"),
+			"через запятую: откуда ещё разрешён WebSocket, например localhost:5173 для дев-сервера")
 	)
 	flag.Parse()
 
@@ -45,7 +48,17 @@ func main() {
 		log.Warn("токен не задан — доступ открыт всем; так можно только локально")
 	}
 
-	handler := api.New(st, *token, webAssets(log), log)
+	var originList []string
+	for _, o := range strings.Split(*origins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			originList = append(originList, o)
+		}
+	}
+	if len(originList) > 0 {
+		log.Info("WebSocket разрешён и с других адресов", "origins", originList)
+	}
+
+	handler := api.New(st, *token, originList, webAssets(log), log)
 
 	srv := &http.Server{
 		Addr:              *addr,

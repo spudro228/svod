@@ -1,7 +1,8 @@
 VAULT  ?= $(HOME)/obsidian/Vk
 SERVER ?= http://localhost:8080
 
-.PHONY: help web build run daemon sync status up down logs rebuild clean
+.PHONY: help web build run daemon sync status up down logs rebuild clean \
+        image provision deploy deploy-all
 
 help:
 	@echo "Свод — команды"
@@ -17,6 +18,11 @@ help:
 	@echo "  make logs      логи сервера"
 	@echo "  make down      остановить сервер"
 	@echo "  make rebuild   пересобрать образ с нуля"
+	@echo ""
+	@echo "  make provision подготовить VPS: обновления, файрвол, Docker"
+	@echo "  make image     собрать образ и упаковать для отправки"
+	@echo "  make deploy    выложить новую версию на VPS"
+	@echo "  make deploy-all  подготовка и выкладка одной командой"
 	@echo ""
 	@echo "  VAULT = $(VAULT)"
 
@@ -56,3 +62,27 @@ status:
 
 clean:
 	rm -rf bin data web/node_modules internal/webui/dist/assets internal/webui/dist/index.html
+
+# ── Выкладка на VPS ───────────────────────────────────────────────────
+
+IMAGE ?= svod:latest
+
+# Образ собираем у себя и отправляем архивом: реестр не нужен,
+# работает с первого дня.
+image:
+	docker build -t $(IMAGE) .
+	mkdir -p deploy/.build
+	docker save $(IMAGE) | gzip > deploy/.build/$(subst :,-,$(IMAGE)).tar.gz
+	@ls -lh deploy/.build/$(subst :,-,$(IMAGE)).tar.gz
+
+provision:
+	cd deploy && ansible-playbook provision.yml
+
+deploy: image
+	cd deploy && ansible-playbook deploy.yml
+
+deploy-all: image
+	cd deploy && ansible-playbook site.yml
+
+check:
+	cd deploy && ansible-playbook site.yml --syntax-check

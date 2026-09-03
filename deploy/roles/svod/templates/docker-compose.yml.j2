@@ -1,0 +1,38 @@
+# Собран Ansible — правки здесь затрутся при следующем деплое.
+services:
+  svodd:
+    image: {{ svod_image_ref }}
+    container_name: svod-server
+    restart: unless-stopped
+    environment:
+      SVOD_TOKEN: "${SVOD_TOKEN}"
+    volumes:
+      # Каталог данных лежит на хосте, а не в томе docker: так его
+      # тривиально бэкапить и осматривать, не заходя в контейнер.
+      - {{ svod_data_dir }}:/data
+    # Наружу не публикуем ни одного порта: снаружи виден только Caddy.
+    expose:
+      - "8080"
+    networks: [svod]
+
+  caddy:
+    image: {{ svod_caddy_image }}
+    container_name: svod-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - {{ svod_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data      # здесь живут выпущенные сертификаты
+      - caddy-config:/config
+    depends_on:
+      - svodd
+    networks: [svod]
+
+networks:
+  svod:
+
+volumes:
+  caddy-data:
+  caddy-config:

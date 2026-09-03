@@ -29,7 +29,7 @@ func newServer(t *testing.T) string {
 	t.Cleanup(func() { st.Close() })
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(api.New(st, "", nil, log))
+	srv := httptest.NewServer(api.New(st, "", nil, nil, log))
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
