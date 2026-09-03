@@ -1,0 +1,5 @@
+---
+- name: Перечитать часовой пояс
+  ansible.builtin.command: dpkg-reconfigure -f noninteractive tzdata
+  changed_when: false
+  failed_when: false

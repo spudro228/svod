@@ -61,6 +61,24 @@
         path: /tmp/svod-image.tar.gz
         state: absent
 
+# Образ, собранный не под ту архитектуру, падает с exec format error
+# и уходит в бесконечный перезапуск. Ловим это сразу и говорим, что делать.
+- name: Сверить архитектуру образа с архитектурой сервера
+  ansible.builtin.command: docker image inspect --format={{ '{{.Architecture}}' }} {{ svod_image_ref }}
+  register: svod_image_arch
+  changed_when: false
+
+- name: Остановиться, если архитектуры разошлись
+  ansible.builtin.fail:
+    msg: >-
+      Образ собран под {{ svod_image_arch.stdout }}, а сервер —
+      {{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}.
+      Пересобери командой:
+      make image PLATFORM=linux/{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}
+  when: >-
+    svod_image_arch.stdout !=
+    ('arm64' if ansible_architecture == 'aarch64' else 'amd64')
+
 - name: Забрать образ из реестра
   ansible.builtin.command: docker pull {{ svod_image_ref }}
   when: svod_image_source == 'registry'
