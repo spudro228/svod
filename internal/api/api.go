@@ -78,6 +78,11 @@ func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog
 		r.Post("/logout", s.logout)
 		r.Get("/auth", s.authState)
 
+		// Гостевые ручки: без токена, но каждая умеет отдать ровно то,
+		// что записано в строке своей ссылки, и ничего больше.
+		r.Get("/shared/{key}", s.sharedNote)
+		r.Get("/shared/{key}/asset/*", s.sharedAsset)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.auth)
 
@@ -92,6 +97,10 @@ func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog
 			r.Put("/files/*", s.put)
 			r.Delete("/files/*", s.del)
 			r.Get("/stream", s.stream)
+
+			r.Post("/share", s.createShare)
+			r.Get("/share", s.listShares)
+			r.Delete("/share/{key}", s.revokeShare)
 		})
 	})
 
@@ -454,6 +463,16 @@ func spaHandler(webFS fs.FS) http.HandlerFunc {
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		if p == "" {
 			p = "index.html"
+		}
+		// Гостю отдаём отдельную сборку: в ней нет кода, умеющего
+		// спрашивать дерево свода или поиск.
+		if strings.HasPrefix(r.URL.Path, "/s/") {
+			noIndex(w)
+			if page, err := fs.ReadFile(webFS, "share.html"); err == nil {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Write(page)
+				return
+			}
 		}
 		if _, err := fs.Stat(webFS, p); err != nil {
 			index, err := fs.ReadFile(webFS, "index.html")

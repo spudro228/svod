@@ -8,6 +8,7 @@ import {
   type FileMeta,
   type Note,
   type SearchHit,
+  type Share,
   type Version,
 } from './api'
 import type { EditorHandle } from './editor'
@@ -112,6 +113,7 @@ export default function App() {
   const [showLeft, setShowLeft] = useState(true)
   const [showRight, setShowRight] = useState(true)
   const [overlay, setOverlay] = useState<Overlay>(null)
+  const [sharing, setSharing] = useState(false)
   const [theme, setTheme] = useState<Theme>(readTheme)
   // null — ещё не спросили у сервера; false — вход нужен.
   const [authed, setAuthed] = useState<boolean | null>(null)
@@ -368,6 +370,7 @@ export default function App() {
       <TopBar
         path={path}
         mode={mode}
+        onShare={() => setSharing(true)}
         editable={editable}
         dirty={dirty}
         saving={saving}
@@ -436,6 +439,8 @@ export default function App() {
       {overlay && (
         <Palette kind={overlay} files={files} onClose={() => setOverlay(null)} onOpen={open} />
       )}
+
+      {sharing && path && <ShareDialog path={path} onClose={() => setSharing(false)} />}
     </div>
   )
 }
@@ -490,6 +495,116 @@ function Login({ onDone, theme }: { onDone: () => void; theme: Theme }) {
   )
 }
 
+function ShareDialog({ path, onClose }: { path: string; onClose: () => void }) {
+  const [hours, setHours] = useState(24)
+  const [share, setShare] = useState<Share | null>(null)
+  const [existing, setExisting] = useState<Share[]>([])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const reload = useCallback(() => {
+    void api
+      .shares()
+      .then((r) => setExisting(r.shares.filter((s) => s.path === path)))
+      .catch(() => setExisting([]))
+  }, [path])
+
+  useEffect(reload, [reload])
+
+  const create = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const s = await api.share(path, hours)
+      setShare(s)
+      reload()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const revoke = async (key: string) => {
+    try {
+      await api.revokeShare(key)
+      if (share?.key === key) setShare(null)
+      reload()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const copy = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setErr('Скопируй ссылку вручную')
+    }
+  }
+
+  return (
+    <div className="overlay" onMouseDown={onClose}>
+      <div className="dialog" onMouseDown={(e) => e.stopPropagation()}>
+        <h2>Временная ссылка</h2>
+        <p className="dialog-hint">
+          Откроет только эту заметку и её картинки — без дерева, поиска и соседних
+          записей. По истечении срока перестанет работать.
+        </p>
+
+        <div className="dialog-row">
+          <label>
+            Срок
+            <select value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+              <option value={1}>час</option>
+              <option value={24}>сутки</option>
+              <option value={168}>неделя</option>
+              <option value={720}>месяц</option>
+            </select>
+          </label>
+          <button className="primary" onClick={create} disabled={busy}>
+            {busy ? 'Выдаю…' : 'Создать ссылку'}
+          </button>
+        </div>
+
+        {share && (
+          <div className="share-result">
+            <input readOnly value={share.url} onFocus={(e) => e.target.select()} />
+            <button onClick={() => copy(share.url)}>{copied ? 'Скопировано' : 'Копировать'}</button>
+          </div>
+        )}
+
+        {err && <p className="login-err">{err}</p>}
+
+        {existing.length > 0 && (
+          <div className="share-list">
+            <p className="label">Действующие ссылки · {existing.length}</p>
+            {existing.map((s) => (
+              <div key={s.key} className="share-row">
+                <span className="until">
+                  до{' '}
+                  {new Date(s.expires * 1000).toLocaleString('ru-RU', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </span>
+                <button onClick={() => revoke(s.key)}>Отозвать</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="dialog-foot">
+          <button onClick={onClose}>Закрыть</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function readTheme(): Theme {
   try {
     const v = localStorage.getItem(THEME_KEY)
@@ -511,6 +626,7 @@ function TopBar({
   theme,
   onMode,
   onTheme,
+  onShare,
 }: {
   path: string | null
   mode: Mode
@@ -520,6 +636,7 @@ function TopBar({
   theme: Theme
   onMode: (m: Mode) => void
   onTheme: () => void
+  onShare: () => void
 }) {
   const parts = path ? path.split('/') : []
   const file = parts.pop()
@@ -548,6 +665,11 @@ function TopBar({
             </button>
             <span className="kbd">⌘E</span>
           </>
+        )}
+        {path && (
+          <button className="pill" onClick={onShare} title="Временная ссылка для просмотра">
+            ПОДЕЛИТЬСЯ
+          </button>
         )}
         <button className="pill" onClick={onTheme} title="Тема · ⌘⇧L">
           {theme === 'dark' ? '墨' : '生'}

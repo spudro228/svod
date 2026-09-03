@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { fetchContent, fetchHash, openApp, openNote, press, seed, uniq } from './svod'
+import { fetchContent, fetchHash, openApp, openNote, press, seed, TOKEN, uniq } from './svod'
 
 // ───────────────────────── чтение ─────────────────────────
 
@@ -222,8 +222,9 @@ test('картинка показывается в тексте и своей к
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
     'base64',
   )
-  await fetch(`${'http://127.0.0.1:8123'}/api/v1/files/${base}/точка.png`, {
+  await fetch(`http://127.0.0.1:8123/api/v1/files/${base}/точка.png`, {
     method: 'PUT',
+    headers: { Authorization: `Bearer ${TOKEN}` },
     body: png,
   })
   await seed(`${base}/Смотри.md`, `# Смотри\n\nВот картинка: ![[${base}/точка.png]]\n`)
@@ -373,4 +374,121 @@ test('прокрутка возвращается на прежнее место
   await expect
     .poll(async () => await page.locator('.main').evaluate((el) => el.scrollTop), { timeout: 5000 })
     .toBeGreaterThan(500)
+})
+
+// ───────────────────────── временные ссылки ─────────────────────────
+
+test('ссылка открывает заметку в чистом браузере без входа', async ({ page, browser }) => {
+  const path = `${uniq('Поделиться')}.md`
+  await seed(path, '# Показать другу\n\nэто видно по ссылке\n')
+
+  await openApp(page)
+  await openNote(page, path)
+
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+
+  const url = await page.locator('.share-result input').inputValue()
+  expect(url).toContain('/s/')
+
+  // Отдельный браузерный контекст: ни куки, ни хранилища от владельца.
+  const guest = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const guestPage = await guest.newPage()
+  await guestPage.goto(url)
+
+  await expect(guestPage.locator('.guest-note h1')).toHaveText('Показать другу')
+  await expect(guestPage.locator('.md')).toContainText('это видно по ссылке')
+  // У гостя нет ни дерева, ни поиска — их просто нет в этой сборке.
+  await expect(guestPage.locator('.panel-l')).toHaveCount(0)
+  await expect(guestPage.locator('.status')).toHaveCount(0)
+  await guest.close()
+})
+
+test('отозванная ссылка перестаёт работать', async ({ page, browser }) => {
+  const path = `${uniq('Отзыв')}.md`
+  await seed(path, '# Отзыв\n\nвременно\n')
+
+  await openApp(page)
+  await openNote(page, path)
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+  const url = await page.locator('.share-result input').inputValue()
+
+  await page.locator('.share-row button', { hasText: 'Отозвать' }).first().click()
+  await expect(page.locator('.share-row')).toHaveCount(0)
+
+  const guest = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const guestPage = await guest.newPage()
+  await guestPage.goto(url)
+  await expect(guestPage.locator('.guest-card h1')).toHaveText('Ссылка не работает')
+  await guest.close()
+})
+
+test('гость по ссылке не достаёт соседнюю заметку', async ({ page, browser }) => {
+  const base = uniq('Изоляция')
+  await seed(`${base}/Открытая.md`, '# Открытая\n\nможно\n')
+  await seed(`${base}/Тайная.md`, '# Тайная\n\nнельзя\n')
+
+  await openApp(page)
+  await openNote(page, `${base}/Открытая.md`)
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+  const url = await page.locator('.share-result input').inputValue()
+
+  const guest = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const guestPage = await guest.newPage()
+  await guestPage.goto(url)
+  await expect(guestPage.locator('.guest-note h1')).toHaveText('Открытая')
+
+  // Убеждаемся, что у гостя действительно нет ключа владельца.
+  expect(await guest.cookies()).toHaveLength(0)
+
+  // Обычные ручки для гостя закрыты, даже когда у него есть рабочая ссылка.
+  for (const api of ['/api/v1/tree', `/api/v1/note/${encodeURIComponent(base + '/Тайная.md')}`]) {
+    const status = await guestPage.evaluate(
+      async (u) => (await fetch(u)).status,
+      api,
+    )
+    expect(status).toBe(401)
+  }
+  await guest.close()
+})
+
+// ───────────────────────── вход ─────────────────────────
+
+test('без входа показывается форма, неверный токен отвергается', async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const page = await ctx.newPage()
+  await page.goto('/')
+
+  await expect(page.locator('.login-card h1')).toHaveText('Свод')
+  await expect(page.locator('.panel-l')).toHaveCount(0)
+
+  await page.locator('.login-card input').fill('явно-не-тот-токен')
+  await page.locator('.login-card button').click()
+  await expect(page.locator('.login-err')).toContainText('не подошёл')
+  await expect(page.locator('.login-card')).toBeVisible()
+
+  await ctx.close()
+})
+
+test('верный токен пускает и вход запоминается', async ({ browser }) => {
+  const path = `${uniq('ПослеВхода')}.md`
+  await seed(path, '# После входа\n')
+
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+  const page = await ctx.newPage()
+  await page.goto('/')
+
+  await page.locator('.login-card input').fill(TOKEN)
+  await page.locator('.login-card button').click()
+
+  await expect(page.locator('.panel-l .row').first()).toBeVisible()
+  await expect(page.locator('.login-card')).toHaveCount(0)
+
+  // Кука выдана, перезагрузка не спрашивает токен заново.
+  await page.reload()
+  await expect(page.locator('.panel-l .row').first()).toBeVisible()
+
+  await ctx.close()
 })

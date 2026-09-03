@@ -7,6 +7,15 @@ import { expect, type Page } from '@playwright/test'
 
 export const BASE = 'http://127.0.0.1:8123'
 
+/** Тот же токен, что поднимает e2e/serve.sh.
+ * Только ASCII: он едет в заголовке Authorization, а тот обязан
+ * быть Latin-1 — кириллица роняет fetch ещё до отправки. */
+export const TOKEN = 'e2e-test-token-not-for-production'
+
+function auth(): Record<string, string> {
+  return { Authorization: `Bearer ${TOKEN}` }
+}
+
 function encodePath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
 }
@@ -14,7 +23,10 @@ function encodePath(path: string): string {
 /** Кладёт файл в свод так, как это сделал бы демон с диска. */
 export async function seed(path: string, content: string, baseHash = ''): Promise<string> {
   // Кириллица в заголовке допустима только в процентном кодировании.
-  const headers: Record<string, string> = { 'X-Svod-Device': encodeURIComponent('тест') }
+  const headers: Record<string, string> = {
+    ...auth(),
+    'X-Svod-Device': encodeURIComponent('тест'),
+  }
   if (baseHash) headers['If-Match'] = baseHash
 
   const res = await fetch(`${BASE}/api/v1/files/${encodePath(path)}`, {
@@ -29,13 +41,13 @@ export async function seed(path: string, content: string, baseHash = ''): Promis
 
 /** Читает файл с сервера — так проверяем, что правка реально сохранилась. */
 export async function fetchContent(path: string): Promise<string> {
-  const res = await fetch(`${BASE}/api/v1/raw/${encodePath(path)}`)
+  const res = await fetch(`${BASE}/api/v1/raw/${encodePath(path)}`, { headers: auth() })
   if (!res.ok) throw new Error(`raw ${path}: ${res.status}`)
   return res.text()
 }
 
 export async function fetchHash(path: string): Promise<string> {
-  const res = await fetch(`${BASE}/api/v1/note/${encodePath(path)}`)
+  const res = await fetch(`${BASE}/api/v1/note/${encodePath(path)}`, { headers: auth() })
   if (!res.ok) throw new Error(`note ${path}: ${res.status}`)
   const body = (await res.json()) as { hash: string }
   return body.hash
