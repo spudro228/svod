@@ -1,6 +1,10 @@
 package api_test
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"net/http"
 	"strings"
@@ -55,6 +59,15 @@ func TestКарточкаСодержитЗаголовокИОтрывок(t *t
 	}
 	if !strings.Contains(page, `property="og:url"`) {
 		t.Error("нет канонического адреса")
+	}
+
+	// Заголовок должен быть один: браузер берёт первый встреченный,
+	// и лишний из сборки перебил бы название заметки.
+	if n := strings.Count(page, "<title>"); n != 1 {
+		t.Errorf("тегов title в странице: %d, ожидался один", n)
+	}
+	if !strings.Contains(page, "<title>Заголовок для карточки — Свод</title>") {
+		t.Error("во вкладке не название заметки")
 	}
 }
 
@@ -127,4 +140,68 @@ func TestКартинкаЗаметкиПопадаетВКарточку(t *tes
 	if !strings.Contains(page, `name="twitter:card" content="summary_large_image"`) {
 		t.Error("с картинкой ожидалась крупная карточка")
 	}
+}
+
+// Мелкие картинки Telegram в карточку не берёт, но место под обложку
+// при этом занимает. Такие лучше не предлагать вовсе.
+func TestМелкаяКартинкаНеСтановитсяОбложкой(t *testing.T) {
+	srv, owner := newServer(t, token)
+	login(t, srv.URL, owner)
+
+	put(t, srv.URL, owner, "Вложения/крошка.png", string(makePNG(t, 16, 16)))
+	put(t, srv.URL, owner, "Мелкая.md", "# Мелкая\n\n![[Вложения/крошка.png]]\n")
+
+	key, _ := share(t, srv.URL, owner, "Мелкая.md", 24)
+	page := fetchPage(t, srv.URL+"/s/"+key)
+
+	if strings.Contains(page, `property="og:image"`) {
+		t.Error("крошечная картинка предложена как обложка")
+	}
+	if !strings.Contains(page, `name="twitter:card" content="summary"`) {
+		t.Error("без обложки ожидалась обычная карточка")
+	}
+}
+
+func TestКрупнаяКартинкаОтдаётсяСРазмерами(t *testing.T) {
+	srv, owner := newServer(t, token)
+	login(t, srv.URL, owner)
+
+	put(t, srv.URL, owner, "Вложения/обложка.png", string(makePNG(t, 640, 360)))
+	put(t, srv.URL, owner, "Крупная.md", "# Крупная\n\n![[Вложения/обложка.png]]\n")
+
+	key, _ := share(t, srv.URL, owner, "Крупная.md", 24)
+	page := fetchPage(t, srv.URL+"/s/"+key)
+
+	if !strings.Contains(page, `property="og:image"`) {
+		t.Fatal("обложка не попала в карточку")
+	}
+	// Размеры избавляют Telegram от необходимости скачивать файл,
+	// чтобы решить, какую карточку строить.
+	if !strings.Contains(page, `property="og:image:width" content="640"`) {
+		t.Error("нет ширины обложки")
+	}
+	if !strings.Contains(page, `property="og:image:height" content="360"`) {
+		t.Error("нет высоты обложки")
+	}
+	if !strings.Contains(page, `property="og:image:type" content="image/png"`) {
+		t.Error("нет типа обложки")
+	}
+	if !strings.Contains(page, `name="twitter:card" content="summary_large_image"`) {
+		t.Error("с обложкой ожидалась крупная карточка")
+	}
+}
+
+func makePNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.Set(x, y, color.RGBA{R: 0x4F, G: 0xB3, B: 0xBF, A: 0xFF})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
