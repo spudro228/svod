@@ -1,0 +1,143 @@
+---
+# Раскладка свода: образ, конфиги, запуск, бэкапы.
+
+- name: Полное имя образа
+  ansible.builtin.set_fact:
+    svod_image_ref: >-
+      {{ (svod_image_registry ~ '/' if svod_image_registry else '')
+         ~ svod_image_name ~ ':' ~ svod_image_tag }}
+
+- name: Каталоги
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ svod_dir }}" }
+    # Каталог данных принадлежит пользователю из контейнера, иначе
+    # сервер не сможет туда писать.
+    - path: "{{ svod_data_dir }}"
+      owner: "{{ svod_uid }}"
+      group: "{{ svod_gid }}"
+    - { path: "{{ svod_backup_dir }}", mode: "0700" }
+
+# ── Доставка образа ───────────────────────────────────────────────────
+
+- name: Отправить образ, собранный на своей машине
+  when: svod_image_source == 'archive'
+  block:
+    - name: Проверить, что архив образа собран
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/.build/{{ svod_image_name }}-{{ svod_image_tag }}.tar.gz"
+      delegate_to: localhost
+      become: false
+      register: svod_archive
+
+    - name: Подсказать, как собрать архив
+      ansible.builtin.fail:
+        msg: >-
+          Архива образа нет. Собери его командой `make image` в корне проекта —
+          она положит {{ svod_image_name }}-{{ svod_image_tag }}.tar.gz
+          в deploy/.build/
+      when: not svod_archive.stat.exists
+
+    - name: Скопировать архив на сервер
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/.build/{{ svod_image_name }}-{{ svod_image_tag }}.tar.gz"
+        dest: /tmp/svod-image.tar.gz
+        mode: "0600"
+      register: svod_image_copy
+
+    - name: Загрузить образ в docker
+      ansible.builtin.command: docker load -i /tmp/svod-image.tar.gz
+      when: svod_image_copy.changed
+      register: svod_image_load
+      changed_when: "'Loaded image' in svod_image_load.stdout"
+
+    - name: Убрать архив
+      ansible.builtin.file:
+        path: /tmp/svod-image.tar.gz
+        state: absent
+
+- name: Забрать образ из реестра
+  ansible.builtin.command: docker pull {{ svod_image_ref }}
+  when: svod_image_source == 'registry'
+  register: svod_pull
+  changed_when: "'Downloaded newer image' in svod_pull.stdout"
+
+# ── Конфигурация ──────────────────────────────────────────────────────
+
+- name: Файл с токеном
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ svod_dir }}/.env"
+    mode: "0600"
+  notify: Перезапустить свод
+
+- name: Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ svod_dir }}/Caddyfile"
+    mode: "0644"
+  notify: Перезапустить свод
+
+- name: docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ svod_dir }}/docker-compose.yml"
+    mode: "0644"
+  notify: Перезапустить свод
+
+# ── Запуск ────────────────────────────────────────────────────────────
+
+- name: Поднять свод
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: "{{ svod_dir }}"
+  register: svod_up
+  changed_when: "'Started' in svod_up.stderr or 'Created' in svod_up.stderr"
+
+- name: Дождаться, пока сервер ответит
+  ansible.builtin.uri:
+    url: http://127.0.0.1/healthz
+    headers:
+      Host: "{{ svod_domain }}"
+    status_code: [200, 301, 308]
+  register: svod_health
+  until: svod_health.status in [200, 301, 308]
+  retries: 20
+  delay: 3
+
+# ── Бэкапы ────────────────────────────────────────────────────────────
+
+- name: Скрипт резервного копирования
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: "{{ svod_dir }}/backup.sh"
+    mode: "0755"
+
+- name: Юнит и таймер бэкапа
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: /etc/systemd/system/{{ item }}
+    mode: "0644"
+  loop:
+    - svod-backup.service
+    - svod-backup.timer
+  notify: Перечитать systemd
+
+- name: Включить ежедневный бэкап
+  ansible.builtin.systemd:
+    name: svod-backup.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Напомнить токен для демонов
+  ansible.builtin.debug:
+    msg:
+      - "Свод поднят: https://{{ svod_domain }}"
+      - "Токен для демона на каждой машине лежит в deploy/.svod-token"
+      - "Запуск демона: svod -vault ~/obsidian/Vk -server https://{{ svod_domain }} -token <токен>"

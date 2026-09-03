@@ -1,0 +1,19 @@
+# Собран Ansible — правки здесь затрутся при следующем деплое.
+{
+	email {{ svod_acme_email }}
+}
+
+{{ svod_domain }} {
+	encode zstd gzip
+
+	# Caddy сам выпускает и продлевает сертификат Let's Encrypt,
+	# и сам прокидывает WebSocket — отдельной настройки не нужно.
+	reverse_proxy svodd:8080
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

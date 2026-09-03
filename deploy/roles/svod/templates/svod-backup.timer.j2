@@ -1,0 +1,9 @@
+[Unit]
+Description=Ежедневная резервная копия свода
+
+[Timer]
+OnCalendar=*-*-* {{ svod_backup_hour }}:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

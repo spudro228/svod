@@ -111,13 +111,25 @@ cd web && npm run e2e      # браузер, настоящий svodd с вши�
 `internal/index/index_test.go` — frontmatter, теги и ссылки внутри блоков
 кода не индексируются, якоря одинаковых заголовков не сталкиваются.
 
-## Токен
+## Выкладка на VPS
 
-В демо токен пустой — доступ открыт. На VPS обязательно:
+Ansible готовит сервер с нуля и запускает свод в Docker за Caddy
+с автоматическим сертификатом:
 
 ```bash
-SVOD_TOKEN=длинная-случайная-строка make up
-./bin/svod -vault ~/obsidian/Vk -server https://svod.example.com -token та-же-строка
+cd deploy && cp inventory.example.ini inventory.ini && $EDITOR inventory.ini
+cd .. && make deploy-all
+```
+
+Подробности, бэкапы и разбор устройства — `deploy/README.md`.
+
+## Токен
+
+В локальном демо токен пустой — доступ открыт. На VPS его ставит Ansible,
+и он же нужен демону:
+
+```bash
+svod -vault ~/obsidian/Vk -server https://svod.example.com -token <токен>
 ```
 
 ## Разработка
@@ -126,6 +138,16 @@ SVOD_TOKEN=длинная-случайная-строка make up
 make run                     # сервер без Docker, на :8080
 cd web && npm run dev        # фронт на :5173 с проксированием на :8080
 ```
+
+Дев-серверу vite нужно разрешить WebSocket с его порта — иначе живые
+обновления не подключатся:
+
+```bash
+./bin/svodd -origins localhost:5173
+```
+
+Во всех остальных случаях список пуст, и соединение принимается только
+с того же адреса, откуда отдана страница.
 
 Демон держит своё состояние в `.svod/state.db` внутри папки свода —
 эту папку стоит добавить в `.gitignore` того репозитория.

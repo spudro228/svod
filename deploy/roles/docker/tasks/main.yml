@@ -1,0 +1,67 @@
+---
+# Docker из официального репозитория: в стандартном apt лежит старая сборка
+# без плагина compose.
+
+- name: Каталог для ключей apt
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Ключ репозитория Docker
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+# Пишем файл репозитория сами: apt_repository объявлен устаревшим,
+# а deb822_repository тянет за собой python3-debian на сервер.
+- name: Репозиторий Docker
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/docker.sources
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://download.docker.com/linux/{{ ansible_distribution | lower }}
+      Suites: {{ ansible_distribution_release }}
+      Components: stable
+      Architectures: {{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}
+      Signed-By: /etc/apt/keyrings/docker.asc
+  register: svod_docker_repo
+
+- name: Установить Docker и плагин compose
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: "{{ svod_docker_repo.changed }}"
+
+# Без ротации журналы контейнеров съедают диск за пару месяцев —
+# на маленьком VPS это заканчивается падением всего сразу.
+- name: Ограничить размер журналов контейнеров
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+  notify: Перезапустить docker
+
+- name: Docker запущен и включён в автозагрузку
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Разрешить пользователю работать с docker без sudo
+  ansible.builtin.user:
+    name: "{{ ansible_user | default('root') }}"
+    groups: docker
+    append: true
+  when: (ansible_user | default('root')) != 'root'

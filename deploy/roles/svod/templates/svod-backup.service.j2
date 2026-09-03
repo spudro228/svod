@@ -1,0 +1,7 @@
+[Unit]
+Description=Резервная копия свода
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart={{ svod_dir }}/backup.sh

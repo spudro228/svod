@@ -1,0 +1,9 @@
+---
+- name: Перезапустить свод
+  ansible.builtin.command:
+    cmd: docker compose up -d --force-recreate
+    chdir: "{{ svod_dir }}"
+
+- name: Перечитать systemd
+  ansible.builtin.systemd:
+    daemon_reload: true

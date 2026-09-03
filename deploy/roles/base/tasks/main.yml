@@ -1,0 +1,63 @@
+---
+# Базовая подготовка сервера: обновления, время, файрвол.
+#
+# Намеренно обходимся модулями из ansible.builtin: на управляющей машине
+# не нужно ставить ни одной дополнительной коллекции.
+
+- name: Дождаться, пока apt освободится после автозапуска при первой загрузке
+  ansible.builtin.raw: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 3; done
+  changed_when: false
+
+- name: Обновить список пакетов
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Поставить всё, что понадобится дальше
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - rsync
+      - sqlite3
+      - ufw
+      - unattended-upgrades
+    state: present
+
+- name: Узнать текущий часовой пояс
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: svod_current_tz
+  changed_when: false
+
+- name: Часовой пояс
+  ansible.builtin.command: timedatectl set-timezone {{ svod_timezone }}
+  when: svod_current_tz.stdout != svod_timezone
+
+- name: Включить автоматические обновления безопасности
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Запретить весь входящий трафик по умолчанию
+  ansible.builtin.command: ufw default deny incoming
+  register: svod_ufw_default
+  changed_when: "'updated' in svod_ufw_default.stdout"
+
+- name: Открыть ssh, http и https
+  ansible.builtin.command: ufw allow {{ item }}
+  loop:
+    - OpenSSH
+    - 80/tcp
+    - 443/tcp
+  register: svod_ufw_rule
+  changed_when: "'added' in svod_ufw_rule.stdout or 'updated' in svod_ufw_rule.stdout"
+
+- name: Включить файрвол
+  ansible.builtin.command: ufw --force enable
+  register: svod_ufw_enable
+  changed_when: "'active' in svod_ufw_enable.stdout"

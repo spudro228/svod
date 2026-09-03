@@ -33,16 +33,24 @@ import (
 const maxFileSize = 32 << 20
 
 type Server struct {
-	st    *store.Store
-	token string
-	hub   *hub
-	log   *slog.Logger
+	st      *store.Store
+	token   string
+	origins []string
+	hub     *hub
+	log     *slog.Logger
 }
 
-// New собирает роутер. Пустой token отключает проверку доступа —
-// это режим локального демо, на VPS так делать нельзя.
-func New(st *store.Store, token string, webFS fs.FS, log *slog.Logger) http.Handler {
-	s := &Server{st: st, token: token, hub: newHub(), log: log}
+// New собирает роутер.
+//
+// Пустой token отключает проверку доступа — это режим локального демо,
+// на VPS так делать нельзя.
+//
+// origins — дополнительные источники, которым разрешено открывать
+// WebSocket. Пустой список означает «только тот же адрес, что и страница»:
+// это правильное поведение и за Caddy, и при отдаче фронта самим сервером.
+// Заполнять нужно лишь для дев-сервера vite, который проксирует с другого порта.
+func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog.Logger) http.Handler {
+	s := &Server{st: st, token: token, origins: origins, hub: newHub(), log: log}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -300,7 +308,7 @@ func (s *Server) conflict(w http.ResponseWriter, p string) {
 
 func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, // локальное демо; на VPS ограничить Origin
+		OriginPatterns: s.origins,
 	})
 	if err != nil {
 		return
