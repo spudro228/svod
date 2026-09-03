@@ -299,3 +299,78 @@ test('доллары в обычном тексте формулами не ст
   await expect(page.locator('.md')).toContainText('Подписка стоит $5 в месяц, а годовая $50.')
   await expect(page.locator('.md pre code')).toContainText('$service->doWork($id, $name);')
 })
+
+// ───────────────────────── адреса страниц ─────────────────────────
+
+test('адрес меняется при открытии и переживает перезагрузку', async ({ page }) => {
+  const path = `${uniq('Адрес')}.md`
+  await seed(path, '# Адрес заметки\n\nтело\n')
+
+  await openApp(page)
+  await openNote(page, path)
+
+  await expect(page).toHaveURL(new RegExp(`/n/${encodeURIComponent(path)}$`))
+
+  // Главное: перезагрузка возвращает на ту же заметку, а не в пустой экран.
+  await page.reload()
+  await expect(page.locator('.note h1')).toHaveText('Адрес заметки')
+})
+
+test('кнопка «назад» возвращает к предыдущей заметке', async ({ page }) => {
+  const base = uniq('История')
+  await seed(`${base}/Первая.md`, '# Первая заметка\n')
+  await seed(`${base}/Вторая.md`, '# Вторая заметка\n')
+
+  await openApp(page)
+  await openNote(page, `${base}/Первая.md`)
+  await openNote(page, `${base}/Вторая.md`)
+  await expect(page.locator('.note h1')).toHaveText('Вторая заметка')
+
+  await page.goBack()
+  await expect(page.locator('.note h1')).toHaveText('Первая заметка')
+
+  await page.goForward()
+  await expect(page.locator('.note h1')).toHaveText('Вторая заметка')
+})
+
+test('переход по оглавлению кладёт якорь в адрес и переживает перезагрузку', async ({ page }) => {
+  const path = `${uniq('Якорь')}.md`
+  const filler = Array.from({ length: 40 }, (_, i) => `Строка ${i} для длины.`).join('\n\n')
+  await seed(path, `# Якорь\n\n${filler}\n\n## Нужный раздел\n\nвот он\n\n${filler}\n`)
+
+  await openApp(page)
+  await openNote(page, path)
+
+  await page.locator('.outline button', { hasText: 'Нужный раздел' }).click()
+  await expect(page).toHaveURL(/#/)
+
+  // Прокрутка по оглавлению плавная, поэтому ждём, а не читаем сразу.
+  await expect
+    .poll(async () => await page.locator('.main').evaluate((el) => el.scrollTop), { timeout: 5000 })
+    .toBeGreaterThan(100)
+
+  await page.reload()
+  await expect(page.locator('.note h1')).toHaveText('Якорь')
+  await expect
+    .poll(async () => await page.locator('.main').evaluate((el) => el.scrollTop), { timeout: 5000 })
+    .toBeGreaterThan(100)
+})
+
+test('прокрутка возвращается на прежнее место без якоря', async ({ page }) => {
+  const path = `${uniq('Прокрутка')}.md`
+  const filler = Array.from({ length: 120 }, (_, i) => `Абзац номер ${i}.`).join('\n\n')
+  await seed(path, `# Прокрутка\n\n${filler}\n`)
+
+  await openApp(page)
+  await openNote(page, path)
+
+  await page.locator('.main').evaluate((el) => { el.scrollTop = 900 })
+  // Смещение пишется с задержкой в четверть секунды.
+  await page.waitForTimeout(500)
+
+  await page.reload()
+  await expect(page.locator('.note h1')).toHaveText('Прокрутка')
+  await expect
+    .poll(async () => await page.locator('.main').evaluate((el) => el.scrollTop), { timeout: 5000 })
+    .toBeGreaterThan(500)
+})
