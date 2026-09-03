@@ -205,3 +205,32 @@ func makePNG(t *testing.T, w, h int) []byte {
 	}
 	return buf.Bytes()
 }
+
+// Краулеры мессенджеров уважают noindex и отказываются строить карточку.
+// Именно этот заголовок однажды и погасил превью в телеграме.
+func TestСтраницаГостяНеЗапрещаетКарточку(t *testing.T) {
+	srv, owner := newServer(t, token)
+	login(t, srv.URL, owner)
+	put(t, srv.URL, owner, "Карточка.md", "# Карточка\n\nтекст\n")
+
+	key, _ := share(t, srv.URL, owner, "Карточка.md", 24)
+	res, err := http.Get(srv.URL + "/s/" + key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	if v := res.Header.Get("X-Robots-Tag"); strings.Contains(v, "noindex") {
+		t.Errorf("страница гостя запрещает индексацию (%q) — краулер не покажет карточку", v)
+	}
+
+	body, _ := io.ReadAll(res.Body)
+	if strings.Contains(string(body), `name="robots"`) {
+		t.Error("в разметке остался запрет для краулеров")
+	}
+	// От поисковиков защищает robots.txt и неугадываемый ключ,
+	// а не запрет на самой странице.
+	if !strings.Contains(string(body), "og:title") {
+		t.Error("карточки нет вовсе")
+	}
+}
