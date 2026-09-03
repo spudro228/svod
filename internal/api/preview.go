@@ -1,7 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"html"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -33,6 +38,9 @@ var (
 	reQuote   = regexp.MustCompile(`(?m)^\s{0,3}>+\s?`)
 	reMarkers = regexp.MustCompile("[*_`]+")
 	reSpaces  = regexp.MustCompile(`\s+`)
+	// Заголовок из сборки убираем: браузер берёт первый встреченный,
+	// и без этого во вкладке остался бы обобщённый «Свод».
+	reTitleTag = regexp.MustCompile(`(?is)<title>.*?</title>\s*`)
 )
 
 // sharePreview отдаёт гостевую страницу с карточкой ссылки в шапке.
@@ -50,22 +58,28 @@ func (s *Server) sharePreview(w http.ResponseWriter, r *http.Request, webFS fs.F
 	meta := ""
 	if sh, _, err := s.st.Share(key); err == nil {
 		if note, err := s.st.Note(sh.Path); err == nil {
-			meta = ogTags(note.Title, excerpt(note.Content), shareURL(r, key),
-				previewImage(r, key, note.Content))
+			img, w, hgt, format := s.previewImage(r, key, note.Content)
+			meta = ogTags(note.Title, excerpt(note.Content), shareURL(r, key), img, w, hgt, format)
 		}
 	}
 	// Недействительная ссылка отдаёт страницу без карточки: краулер
 	// не должен по разнице ответов узнавать, существовал ли ключ.
 
+	out := string(page)
+	if meta != "" {
+		out = reTitleTag.ReplaceAllString(out, "")
+	}
+	out = strings.Replace(out, "</head>", meta+"</head>", 1)
+
 	noIndex(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(strings.Replace(string(page), "</head>", meta+"</head>", 1)))
+	w.Write([]byte(out))
 	return true
 }
 
 // ogTags собирает шапку карточки. Всё пользовательское экранируется:
 // сюда попадает содержимое заметок.
-func ogTags(title, desc, url, image string) string {
+func ogTags(title, desc, url, image string, imgW, imgH int, imgType string) string {
 	if title == "" {
 		title = "Заметка"
 	}
@@ -93,6 +107,16 @@ func ogTags(title, desc, url, image string) string {
 	tag("og:url", url)
 	tag("og:locale", "ru_RU")
 	tag("og:image", image)
+
+	// Размеры подсказывают Telegram, строить крупную карточку или мелкую;
+	// без них он решает сам, уже скачав файл.
+	if image != "" && imgW > 0 {
+		tag("og:image:width", itoa(imgW))
+		tag("og:image:height", itoa(imgH))
+		if imgType != "" {
+			tag("og:image:type", "image/"+imgType)
+		}
+	}
 
 	// Без карточки Twitter превью в некоторых клиентах остаётся голой ссылкой.
 	if image != "" {
@@ -147,15 +171,35 @@ func excerpt(content string) string {
 	return strings.TrimRight(strings.TrimSpace(string(cut)), ".,;:—-") + "… Читать далее"
 }
 
-// previewImage подставляет в карточку первую картинку заметки, если она есть.
-// Адрес ведёт через ту же ссылку, поэтому доступен без токена — но только
-// он, остальные вложения по-прежнему закрыты.
-func previewImage(r *http.Request, key, content string) string {
+// minPreviewSide — картинки мельче Telegram в карточку не берёт,
+// а место под обложку при этом занимает. Лучше отдать карточку без неё.
+const minPreviewSide = 200
+
+// previewImage подбирает обложку карточки: первую картинку заметки,
+// которая достаточно велика. Возвращает адрес и размеры.
+//
+// Адрес ведёт через ту же временную ссылку, поэтому доступен без токена —
+// но только он, остальные вложения по-прежнему закрыты.
+func (s *Server) previewImage(r *http.Request, key, content string) (url string, w, h int, format string) {
 	parsed := index.Parse([]byte(content))
 	for _, e := range parsed.Embeds {
 		if !isPreviewable(e) {
 			continue
 		}
+		target := s.resolveShared("", e)
+		if target == "" {
+			continue
+		}
+		hash, err := s.st.Hash(target)
+		if err != nil || hash == "" {
+			continue
+		}
+
+		width, height, kind := imageSize(s, hash)
+		if width > 0 && (width < minPreviewSide || height < minPreviewSide) {
+			continue // мелкую обложку Telegram всё равно не покажет
+		}
+
 		scheme := "http"
 		if isHTTPS(r) {
 			scheme = "https"
@@ -164,9 +208,38 @@ func previewImage(r *http.Request, key, content string) string {
 		for i, seg := range segments {
 			segments[i] = urlEscape(seg)
 		}
-		return scheme + "://" + r.Host + "/api/v1/shared/" + key + "/asset/" + strings.Join(segments, "/")
+		return scheme + "://" + r.Host + "/api/v1/shared/" + key + "/asset/" +
+			strings.Join(segments, "/"), width, height, kind
 	}
-	return ""
+	return "", 0, 0, ""
+}
+
+// imageSize читает размеры из заголовка файла, не раскодировав его целиком.
+// Формат может оказаться неизвестным — тогда обложку отдаём без размеров.
+func imageSize(s *Server, hash string) (int, int, string) {
+	b, err := s.st.Blob(hash)
+	if err != nil {
+		return 0, 0, ""
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return 0, 0, ""
+	}
+	return cfg.Width, cfg.Height, format
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [12]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
 }
 
 // urlEscape кодирует один сегмент пути: кириллица и пробелы в адресе
