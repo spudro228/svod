@@ -12,6 +12,14 @@ import {
 } from './api'
 import type { EditorHandle } from './editor'
 import { ensureMath, hasMath, headingId, renderNote } from './md'
+import {
+  anchorFromLocation,
+  loadScroll,
+  pathFromLocation,
+  pushNote,
+  replaceAnchor,
+  saveScroll,
+} from './route'
 
 // ───────────────────────── дерево ─────────────────────────
 
@@ -109,6 +117,7 @@ export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   const editorRef = useRef<EditorHandle | null>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const tree = useMemo(() => buildTree(files), [files])
 
   const dirty = note !== null && draft !== null && draft !== note.content
@@ -147,10 +156,11 @@ export default function App() {
   }, [])
 
   const open = useCallback(
-    async (p: string, force = false) => {
+    async (p: string, force = false, push = true) => {
       if (!force && dirtyRef.current && !confirm('Есть несохранённые правки. Уйти и потерять их?')) {
         return
       }
+      if (push) pushNote(p)
       setPath(p)
       setOverlay(null)
       setMode('read')
@@ -233,6 +243,25 @@ export default function App() {
       .then((st) => setAuthed(st.authorized))
       .catch(() => setAuthed(false))
   }, [])
+
+  // Адрес — источник правды о том, что открыто. Отсюда и переход «назад»,
+  // и возврат на ту же заметку после перезагрузки.
+  useEffect(() => {
+    if (authed !== true) return
+    const fromURL = pathFromLocation()
+    if (fromURL) void open(fromURL, true, false)
+
+    const onPop = () => {
+      const p = pathFromLocation()
+      if (p) void open(p, true, false)
+      else {
+        setPath(null)
+        setNote(null)
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [authed, open])
 
   // Данные и живой поток — только после входа.
   useEffect(() => {
@@ -368,7 +397,7 @@ export default function App() {
           />
         </nav>
 
-        <main className="main">
+        <main className="main" ref={mainRef}>
           {conflict && (
             <ConflictBar onReload={reloadFromServer} onCopy={saveAsCopy} />
           )}
@@ -378,6 +407,7 @@ export default function App() {
               mode={mode}
               files={files}
               initial={draft ?? note.content}
+              scroller={mainRef}
               onOpen={open}
               onChange={setDraft}
               onSave={save}
@@ -596,6 +626,7 @@ function NoteView({
   mode,
   files,
   initial,
+  scroller,
   onOpen,
   onChange,
   onSave,
@@ -605,6 +636,7 @@ function NoteView({
   mode: Mode
   files: FileMeta[]
   initial: string
+  scroller: React.RefObject<HTMLElement | null>
   onOpen: (p: string) => void
   onChange: (text: string) => void
   onSave: () => void
@@ -734,6 +766,38 @@ function NoteView({
     return () => window.removeEventListener('paste', onPaste)
   }, [mode, editorRef])
 
+  // Возврат на то же место. Якорь надёжнее пикселей: заметку могли
+  // поправить с другой машины, и текст уехал вниз или вверх.
+  useEffect(() => {
+    const box = scroller.current
+    if (!box || mode !== 'read') return
+
+    const anchor = anchorFromLocation()
+    const target = anchor ? document.getElementById(anchor) : null
+    if (target) {
+      target.scrollIntoView({ block: 'start' })
+    } else {
+      box.scrollTop = loadScroll(note.path)
+    }
+  }, [note.path, html, mode, scroller])
+
+  // Смещение запоминаем с задержкой: иначе на каждый пиксель прокрутки
+  // приходилась бы запись в хранилище.
+  useEffect(() => {
+    const box = scroller.current
+    if (!box) return
+    let timer: number | undefined
+    const onScroll = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => saveScroll(note.path, box.scrollTop), 250)
+    }
+    box.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.clearTimeout(timer)
+      box.removeEventListener('scroll', onScroll)
+    }
+  }, [note.path, scroller])
+
   const date = new Date(note.mtime * 1000)
 
   if (note.binary) {
@@ -836,6 +900,8 @@ function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) =>
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Якорь в адресе — чтобы перезагрузка вернула к этому же разделу.
+    replaceAnchor(note.path, id)
   }
 
   return (
