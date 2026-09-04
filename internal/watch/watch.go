@@ -129,15 +129,25 @@ type Watcher struct {
 
 	mu      sync.Mutex
 	pending map[string]*time.Timer
+	rescan  *time.Timer
 }
 
 func NewWatcher(root string, ig *Ignore, log *slog.Logger) *Watcher {
 	return &Watcher{root: root, ig: ig, log: log, pending: map[string]*time.Timer{}}
 }
 
-// Run блокируется до отмены контекста, вызывая onChange для каждого пути,
-// по которому наступила тишина.
-func (w *Watcher) Run(ctx context.Context, onChange func(rel string)) error {
+// RescanDelay — пауза перед полным обходом. Переименование каталога
+// приходит одним событием, и за ним обычно следуют другие; ждём тишины,
+// чтобы не обходить свод по нескольку раз подряд.
+const RescanDelay = time.Second
+
+// Run блокируется до отмены контекста.
+//
+// onChange вызывается для каждого файла, по которому наступила тишина.
+// onRescan — когда менялся каталог: переименование или перемещение папки
+// не порождает событий на файлы внутри, поэтому единственный способ
+// узнать о них — обойти свод заново.
+func (w *Watcher) Run(ctx context.Context, onChange func(rel string), onRescan func()) error {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
@@ -163,15 +173,27 @@ func (w *Watcher) Run(ctx context.Context, onChange func(rel string)) error {
 			}
 			rel = filepath.ToSlash(rel)
 
-			// Новый каталог — начинаем следить и за ним.
+			// Новый каталог — начинаем следить и за ним, а его содержимое
+			// ищем обходом: событий на вложенные файлы не будет.
 			if ev.Op&fsnotify.Create != 0 {
 				if st, err := os.Stat(ev.Name); err == nil && st.IsDir() {
 					if !w.ig.MatchDir(rel) {
 						_ = w.addTree(fw, ev.Name)
+						w.scheduleRescan(onRescan)
 					}
 					continue
 				}
 			}
+
+			// Исчезнувший путь мог быть каталогом: тогда о файлах внутри
+			// нам никто не сообщит, и без обхода они останутся на сервере
+			// навсегда.
+			if ev.Op&(fsnotify.Rename|fsnotify.Remove) != 0 {
+				if _, err := os.Stat(ev.Name); err != nil {
+					w.scheduleRescan(onRescan)
+				}
+			}
+
 			if w.ig.Match(rel) {
 				continue
 			}
@@ -199,6 +221,26 @@ func (w *Watcher) schedule(rel string, onChange func(string)) {
 		delete(w.pending, rel)
 		w.mu.Unlock()
 		onChange(rel)
+	})
+}
+
+// scheduleRescan откладывает полный обход, схлопывая частые вызовы:
+// при перемещении папки событий приходит много подряд.
+func (w *Watcher) scheduleRescan(onRescan func()) {
+	if onRescan == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.rescan != nil {
+		w.rescan.Stop()
+	}
+	w.rescan = time.AfterFunc(RescanDelay, func() {
+		w.mu.Lock()
+		w.rescan = nil
+		w.mu.Unlock()
+		onRescan()
 	})
 }
 

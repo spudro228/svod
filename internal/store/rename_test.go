@@ -175,3 +175,34 @@ func TestЦепочкаПереименований(t *testing.T) {
 }
 
 var _ = store.ErrNotFound
+
+// История читается сверху вниз, поэтому порядок должен быть строгим:
+// звенья цепочки собираются по одному, и без сортировки версия старого
+// имени оказывалась выше более новой.
+func TestИсторияОтсортированаПоНомеру(t *testing.T) {
+	st := open(t)
+	content := []byte("# Кочующая\n")
+
+	if _, err := st.Put("Раз.md", content, "", "мак"); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range [][2]string{{"Раз.md", "Два.md"}, {"Два.md", "Три.md"}} {
+		cur, _ := st.Hash(step[0])
+		if _, err := st.Delete(step[0], cur, "мак"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Put(step[1], content, "", "мак"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	hist, err := st.History("Три.md", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(hist); i++ {
+		if hist[i-1].Seq < hist[i].Seq {
+			t.Fatalf("история не по порядку: seq %d выше %d", hist[i-1].Seq, hist[i].Seq)
+		}
+	}
+}
