@@ -31,8 +31,9 @@ web:
 	cd web && npm install --no-audit --no-fund && npm run build
 
 build: web
-	go build -trimpath -o bin/svodd ./cmd/svodd
-	go build -trimpath -o bin/svod  ./cmd/svod
+	go build -trimpath -o bin/svodd    ./cmd/svodd
+	go build -trimpath -o bin/svod     ./cmd/svod
+	go build -trimpath -o bin/svod-mcp ./cmd/svod-mcp
 
 run: build
 	./bin/svodd -addr :8080 -data ./data

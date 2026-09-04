@@ -104,6 +104,43 @@ markdown; вставка из буфера в режиме правки сохр
 
 Что рассматриваем дальше — `docs/планы.md`.
 
+## Claude Desktop пишет прямо в свод
+
+`cmd/svod-mcp` — сервер Model Context Protocol. Claude Desktop сам поднимает
+его и общается по stdio; своей логики там нет, только перевод вызовов
+инструментов в те же запросы, которыми ходит демон.
+
+```bash
+go build -o ~/.local/bin/svod-mcp ./cmd/svod-mcp
+```
+
+В `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "svod": {
+      "command": "/Users/имя/.local/bin/svod-mcp",
+      "env": {
+        "SVOD_SERVER": "https://свод.example.com",
+        "SVOD_TOKEN": "токен"
+      }
+    }
+  }
+}
+```
+
+Инструменты: `search_notes`, `read_note`, `list_notes`, `list_recent`,
+`create_note`, `append_note`.
+
+Заметка, созданная из Claude Desktop, попадает на сервер, оттуда её забирает
+демон — и через секунду она лежит на диске в Obsidian. Отдельная интеграция
+с Obsidian не нужна: она уже есть.
+
+Запись бережная: `create_note` не трогает существующий файл, `append_note`
+дописывает с хешем текущей версии. Если заметку успели изменить с другой
+стороны, сервер откажет, а не затрёт.
+
 ## Чего нет и не будет в v1
 
 - **Совместное редактирование** (CRDT). Решение № 1 в спеке, осознанное.
