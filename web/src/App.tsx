@@ -110,8 +110,9 @@ export default function App() {
   const [conflict, setConflict] = useState<{ mine: string; serverHash: string } | null>(null)
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [showLeft, setShowLeft] = useState(true)
-  const [showRight, setShowRight] = useState(true)
+  const narrow = useNarrow()
+  const [showLeft, setShowLeft] = useState(!narrow)
+  const [showRight, setShowRight] = useState(!narrow)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [sharing, setSharing] = useState(false)
   const [theme, setTheme] = useState<Theme>(readTheme)
@@ -123,6 +124,13 @@ export default function App() {
   const tree = useMemo(() => buildTree(files), [files])
 
   const dirty = note !== null && draft !== null && draft !== note.content
+
+  // На телефоне панели перекрывают текст, поэтому при смене ширины
+  // раскладка приводится к разумному для неё виду.
+  useEffect(() => {
+    setShowLeft(!narrow)
+    setShowRight(!narrow)
+  }, [narrow])
 
   // Актуальное значение в ссылке: иначе open() замыкает состояние того
   // рендера, в котором был создан, и спрашивает про правки, которых уже нет.
@@ -164,6 +172,11 @@ export default function App() {
       }
       if (push) pushNote(p)
       setPath(p)
+      // На узком экране панель закрывает текст — после выбора убираем её.
+      if (narrow) {
+        setShowLeft(false)
+        setShowRight(false)
+      }
       setOverlay(null)
       setMode('read')
       setDraft(null)
@@ -176,7 +189,7 @@ export default function App() {
         setError(e instanceof Error ? e.message : String(e))
       }
     },
-    [],
+    [narrow],
   )
 
   // Сохранение. Конфликт не молчаливый: сервер ничего не перезаписал,
@@ -370,6 +383,14 @@ export default function App() {
       <TopBar
         path={path}
         mode={mode}
+        onTree={() => {
+          setShowRight(false)
+          setShowLeft((v) => !v)
+        }}
+        onPanel={() => {
+          setShowLeft(false)
+          setShowRight((v) => !v)
+        }}
         onShare={() => setSharing(true)}
         editable={editable}
         dirty={dirty}
@@ -424,6 +445,16 @@ export default function App() {
         <aside className="panel panel-r">
           <SidePanel note={note} onOpen={open} />
         </aside>
+
+        {narrow && (showLeft || showRight) && (
+          <div
+            className="backdrop"
+            onClick={() => {
+              setShowLeft(false)
+              setShowRight(false)
+            }}
+          />
+        )}
       </div>
 
       <StatusBar
@@ -605,6 +636,20 @@ function ShareDialog({ path, onClose }: { path: string; onClose: () => void }) {
   )
 }
 
+/** Узкий ли экран. Порог тот же, что в стилях. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 860px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 860px)')
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
+
 function readTheme(): Theme {
   try {
     const v = localStorage.getItem(THEME_KEY)
@@ -627,6 +672,8 @@ function TopBar({
   onMode,
   onTheme,
   onShare,
+  onTree,
+  onPanel,
 }: {
   path: string | null
   mode: Mode
@@ -637,12 +684,17 @@ function TopBar({
   onMode: (m: Mode) => void
   onTheme: () => void
   onShare: () => void
+  onTree: () => void
+  onPanel: () => void
 }) {
   const parts = path ? path.split('/') : []
   const file = parts.pop()
 
   return (
     <header className="top">
+      <button className="pill only-narrow" onClick={onTree} title="Дерево свода">
+        ☰
+      </button>
       <span className="crumb">
         {path ? (
           <>
@@ -669,6 +721,11 @@ function TopBar({
         {path && (
           <button className="pill" onClick={onShare} title="Временная ссылка для просмотра">
             ПОДЕЛИТЬСЯ
+          </button>
+        )}
+        {path && (
+          <button className="pill only-narrow" onClick={onPanel} title="Структура и ссылки">
+            ⋮
           </button>
         )}
         <button className="pill" onClick={onTheme} title="Тема · ⌘⇧L">
@@ -895,12 +952,27 @@ function NoteView({
     if (!box || mode !== 'read') return
 
     const anchor = anchorFromLocation()
-    const target = anchor ? document.getElementById(anchor) : null
-    if (target) {
-      target.scrollIntoView({ block: 'start' })
-    } else {
-      box.scrollTop = loadScroll(note.path)
+    const want = anchor ? 0 : loadScroll(note.path)
+    if (!anchor && want <= 0) return
+
+    // Высота текста дорастает уже после первой отрисовки: подгружаются
+    // шрифты, появляются картинки. Если поставить позицию сразу, браузер
+    // зажмёт её по тогдашней высоте и страница окажется не там.
+    // Поэтому повторяем несколько кадров, пока не встанет.
+    let frame = 0
+    let id = 0
+    const apply = () => {
+      const target = anchor ? document.getElementById(anchor) : null
+      if (target) {
+        target.scrollIntoView({ block: 'start' })
+      } else {
+        box.scrollTop = want
+        if (Math.abs(box.scrollTop - want) < 4) return
+      }
+      if (++frame < 8) id = requestAnimationFrame(apply)
     }
+    id = requestAnimationFrame(apply)
+    return () => cancelAnimationFrame(id)
   }, [note.path, html, mode, scroller])
 
   // Смещение запоминаем с задержкой: иначе на каждый пиксель прокрутки
@@ -1079,6 +1151,13 @@ function SidePanel({ note, onOpen }: { note: Note | null; onOpen: (p: string) =>
                   timeStyle: 'short',
                 })}
               </span>
+              {/* Прежнее имя показываем явно: иначе непонятно, откуда
+                  в истории версии старше самой заметки. */}
+              {v.path && (
+                <span className="was" title={`тогда файл назывался ${v.path}`}>
+                  {displayName(v.path)}
+                </span>
+              )}
               <span className="dev">{v.device}</span>
             </div>
           ))}

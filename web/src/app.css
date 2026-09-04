@@ -558,3 +558,83 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .share-row .until { flex: 1; }
 
 .dialog-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* ───────────── Телефон ───────────── */
+
+/*
+  До 860 пикселей три колонки не живут: на 375 точках каждая была бы
+  шириной с пару слов. Поэтому дерево и правая панель уезжают поверх
+  текста, а сам текст занимает всю ширину.
+*/
+@media (max-width: 860px) {
+  .body,
+  .body.no-left,
+  .body.no-right,
+  .body.no-left.no-right {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-l,
+  .panel-r {
+    position: fixed;
+    top: var(--bar-top);
+    bottom: var(--bar-status);
+    width: min(300px, 84vw);
+    z-index: 20;
+    border: 0;
+    /* Тень допустима: панель здесь всплывающий слой, а не колонка */
+    box-shadow: 0 0 32px rgb(0 0 0 / 0.5);
+    transition: transform 0.18s ease;
+  }
+
+  .panel-l { left: 0; border-right: 1px solid var(--line-strong); transform: translateX(-100%); }
+  .panel-r { right: 0; border-left: 1px solid var(--line-strong); transform: translateX(100%); }
+
+  /* Панели показываются теми же флагами, что и на широком экране,
+     только вместо колонки выезжают поверх. */
+  .body:not(.no-left) .panel-l,
+  .body:not(.no-right) .panel-r { transform: none; }
+  .body.no-left .panel-l, .body.no-right .panel-r { display: block; }
+
+  .backdrop {
+    position: fixed;
+    inset: var(--bar-top) 0 var(--bar-status);
+    background: rgb(0 0 0 / 0.5);
+    z-index: 15;
+  }
+
+  /* Пальцем в строку высотой 26 точек не попасть */
+  .row { height: 38px; font-size: 14px; }
+  .outline button, .links button { padding: 6px 0; }
+
+  .note { padding: 22px 18px 60px; }
+  .md { max-width: none; }
+  .note h1, .md h1 { font-size: 21px; }
+
+  .top { gap: 8px; padding: 0 8px; }
+  /* Подсказки клавиш на телефоне бессмысленны */
+  .top .kbd:not(.unsaved) { display: none; }
+  .status .push { display: none; }
+
+  .editor { height: calc(100vh - var(--bar-top) - var(--bar-status) - 110px); }
+  .dialog { width: min(480px, 94vw); }
+}
+
+/* Кнопки-переключатели панелей нужны только там, где нет клавиатуры */
+.only-narrow { display: none; }
+@media (max-width: 860px) {
+  .only-narrow { display: inline-flex; align-items: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-l, .panel-r { transition: none; }
+}
+
+.history .was {
+  color: var(--fg-faint);
+  font-style: italic;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

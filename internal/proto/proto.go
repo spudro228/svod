@@ -96,6 +96,9 @@ type Version struct {
 	Deleted bool   `json:"deleted,omitempty"`
 	At      int64  `json:"at"`
 	Device  string `json:"device"`
+	// Path заполнен, только когда версия относится к прежнему имени
+	// файла: так в истории видно, что заметку переименовывали.
+	Path string `json:"path,omitempty"`
 }
 
 // Share — временная ссылка на просмотр одной заметки без токена.

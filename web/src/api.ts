@@ -45,6 +45,8 @@ export type Version = {
   deleted?: boolean
   at: number
   device: string
+  /** Заполнен, только если версия относится к прежнему имени файла. */
+  path?: string
 }
 
 /** Сервер не пустил: нужен вход. */

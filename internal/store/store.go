@@ -62,6 +62,18 @@ CREATE INDEX IF NOT EXISTS links_dst ON links(dst);
 CREATE TABLE IF NOT EXISTS tags (path TEXT NOT NULL, tag TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS tags_tag ON tags(tag);
 
+-- Переименования. Демон присылает их как удаление плюс создание,
+-- поэтому связь между старым и новым путём восстанавливается по совпадению
+-- содержимого: у файла с тем же хешем, появившегося рядом с исчезнувшим,
+-- другого объяснения нет.
+CREATE TABLE IF NOT EXISTS renames (
+  from_path TEXT NOT NULL,
+  to_path   TEXT NOT NULL,
+  seq       INTEGER NOT NULL,
+  at        INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS renames_to ON renames(to_path);
+
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 INSERT OR IGNORE INTO meta(k, v) VALUES ('seq', '0');
 `
@@ -190,6 +202,11 @@ func (s *Store) Put(path string, content []byte, baseHash, device string) (proto
 	if err := reindex(tx, s.fts && index.IsNote(path), path, title, parsed); err != nil {
 		return proto.PutResult{}, err
 	}
+	if cur == "" {
+		if err := linkRename(tx, path, hash, seq, now); err != nil {
+			return proto.PutResult{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return proto.PutResult{}, err
 	}
@@ -226,6 +243,11 @@ func (s *Store) Delete(path, baseHash, device string) (proto.PutResult, error) {
 	}
 	if _, err := tx.Exec(`INSERT INTO versions(seq, path, hash, deleted, at, device) VALUES(?,?,?,1,?,?)`,
 		seq, path, cur, now, device); err != nil {
+		return proto.PutResult{}, err
+	}
+	// Тот же файл мог уже появиться под новым именем: демон шлёт
+	// переименование двумя событиями, и порядок не гарантирован.
+	if err := linkRenameFromDelete(tx, path, cur, seq, now); err != nil {
 		return proto.PutResult{}, err
 	}
 	if _, err := tx.Exec(`DELETE FROM links WHERE src=?`, path); err != nil {
@@ -402,28 +424,109 @@ func (s *Store) Search(q string, limit int) ([]proto.SearchHit, error) {
 }
 
 // History отдаёт все версии пути, свежие первыми.
+//
+// Если файл переименовывали, история продолжается прошлым именем:
+// иначе после переезда заметка выглядела бы только что созданной.
 func (s *Store) History(path string, limit int) ([]proto.Version, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	rows, err := s.db.Query(`SELECT seq, hash, deleted, at, device
-		FROM versions WHERE path=? ORDER BY seq DESC LIMIT ?`, path, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 
 	out := []proto.Version{}
-	for rows.Next() {
-		var v proto.Version
-		var del int
-		if err := rows.Scan(&v.Seq, &v.Hash, &del, &v.At, &v.Device); err != nil {
+	current := path
+	// Цепочка переименований может быть длинной, но не бесконечной:
+	// ограничение защищает от кольца, если оно как-то возникнет.
+	for step := 0; step < 20 && len(out) < limit; step++ {
+		rows, err := s.db.Query(`SELECT seq, hash, deleted, at, device
+			FROM versions WHERE path=? ORDER BY seq DESC LIMIT ?`, current, limit-len(out))
+		if err != nil {
 			return nil, err
 		}
-		v.Deleted = del == 1
-		out = append(out, v)
+		for rows.Next() {
+			var v proto.Version
+			var del int
+			if err := rows.Scan(&v.Seq, &v.Hash, &del, &v.At, &v.Device); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			v.Deleted = del == 1
+			if current != path {
+				v.Path = current // прошлое имя показываем в истории явно
+			}
+			out = append(out, v)
+		}
+		rows.Close()
+
+		prev, err := s.renamedFrom(current)
+		if err != nil || prev == "" {
+			break
+		}
+		current = prev
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// renamedFrom находит прежнее имя пути.
+func (s *Store) renamedFrom(path string) (string, error) {
+	var from string
+	err := s.db.QueryRow(`SELECT from_path FROM renames WHERE to_path=?
+		ORDER BY seq DESC LIMIT 1`, path).Scan(&from)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return from, err
+}
+
+// renameWindow — насколько далеко друг от друга могут стоять удаление
+// и создание, чтобы считаться одним переименованием. Демон шлёт их
+// подряд; запас нужен на случай, когда одна из машин была офлайн.
+const renameWindow = 5 * time.Minute
+
+// linkRename ищет недавно удалённый файл с тем же содержимым:
+// значит, это он и переехал.
+func linkRename(tx *sql.Tx, toPath, hash string, seq, now int64) error {
+	var fromPath string
+	err := tx.QueryRow(`SELECT path FROM files
+		WHERE deleted = 1 AND hash = ? AND path != ? AND mtime >= ?
+		ORDER BY seq DESC LIMIT 1`,
+		hash, toPath, now-int64(renameWindow.Seconds())).Scan(&fromPath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO renames(from_path, to_path, seq, at) VALUES(?,?,?,?)`,
+		fromPath, toPath, seq, now)
+	return err
+}
+
+// linkRenameFromDelete ловит обратный порядок: новый файл уже приехал,
+// а удаление старого пришло следом.
+func linkRenameFromDelete(tx *sql.Tx, fromPath, hash string, seq, now int64) error {
+	var toPath string
+	err := tx.QueryRow(`SELECT path FROM files
+		WHERE deleted = 0 AND hash = ? AND path != ? AND mtime >= ?
+		ORDER BY seq DESC LIMIT 1`,
+		hash, fromPath, now-int64(renameWindow.Seconds())).Scan(&toPath)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// Связь могли уже записать при создании — второй раз не нужно.
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM renames WHERE from_path=? AND to_path=?`,
+		fromPath, toPath).Scan(&exists); err != nil {
+		return err
+	}
+	if exists > 0 {
+		return nil
+	}
+	_, err = tx.Exec(`INSERT INTO renames(from_path, to_path, seq, at) VALUES(?,?,?,?)`,
+		fromPath, toPath, seq, now)
+	return err
 }
 
 // Tags отдаёт все теги свода с числом заметок на каждый.

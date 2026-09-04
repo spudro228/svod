@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test'
-import { fetchContent, fetchHash, openApp, openNote, press, seed, TOKEN, uniq } from './svod'
+import {
+  fetchContent,
+  fetchHash,
+  openApp,
+  openNote,
+  press,
+  removeNote,
+  seed,
+  TOKEN,
+  uniq,
+} from './svod'
 
 // ───────────────────────── чтение ─────────────────────────
 
@@ -365,7 +375,19 @@ test('прокрутка возвращается на прежнее место
   await openApp(page)
   await openNote(page, path)
 
-  await page.locator('.main').evaluate((el) => { el.scrollTop = 900 })
+  // Дожидаемся, пока текст отрисуется: пока страница короткая, задать
+  // смещение нельзя — браузер зажмёт его в ноль, и сохранять будет нечего.
+  await expect
+    .poll(async () => await page.locator('.main').evaluate((el) => el.scrollHeight))
+    .toBeGreaterThan(1500)
+
+  await page.locator('.main').evaluate((el) => {
+    el.scrollTop = 900
+  })
+  await expect
+    .poll(async () => await page.locator('.main').evaluate((el) => el.scrollTop))
+    .toBeGreaterThan(500)
+
   // Смещение пишется с задержкой в четверть секунды.
   await page.waitForTimeout(500)
 
@@ -558,4 +580,112 @@ test('гостевая страница не тянет разметчик и п
   expect(bytes, `скачано ${(bytes / 1024).toFixed(1)} КБ`).toBeLessThan(60 * 1024)
 
   await guest.close()
+})
+
+// ───────────────────────── телефон ─────────────────────────
+
+test.describe('узкий экран', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('дерево спрятано, открывается кнопкой и закрывается после выбора', async ({ page }) => {
+    const path = `${uniq('Телефон')}.md`
+    await seed(path, '# С телефона\n\nтекст\n')
+
+    await page.goto('/')
+    // На телефоне дерево не занимает место: текст важнее.
+    await expect(page.locator('.panel-l')).not.toBeInViewport()
+
+    await page.locator('.top .pill', { hasText: '☰' }).click()
+    await expect(page.locator('.panel-l')).toBeInViewport()
+
+    await page.locator('.palette input').count() // страховка от гонки отрисовки
+    await page.locator('.row', { hasText: path.replace('.md', '') }).first().click()
+
+    await expect(page.locator('.note h1')).toHaveText('С телефона')
+    // Выбрали заметку — панель ушла, иначе она закрывает текст.
+    await expect(page.locator('.panel-l')).not.toBeInViewport()
+  })
+
+  test('текст занимает всю ширину и не уезжает вбок', async ({ page }) => {
+    const path = `${uniq('Ширина')}.md`
+    await seed(
+      path,
+      '# Ширина\n\n' +
+        'Длинный абзац, который обязан переноситься, а не разъезжать страницу вбок. '.repeat(6) +
+        '\n\n| Колонка | Ещё колонка | И третья |\n|---|---|---|\n| раз | два | три |\n',
+    )
+
+    await page.goto('/')
+    await openNote(page, path)
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow, 'страница разъезжается вбок').toBeLessThanOrEqual(0)
+
+    const noteWidth = await page.locator('.note').evaluate((el) => el.clientWidth)
+    expect(noteWidth).toBeGreaterThan(300)
+  })
+
+  test('затемнение закрывает панель по нажатию мимо неё', async ({ page }) => {
+    await seed(`${uniq('Затемнение')}.md`, '# Затемнение\n')
+    await page.goto('/')
+
+    await page.locator('.top .pill', { hasText: '☰' }).click()
+    await expect(page.locator('.backdrop')).toBeVisible()
+
+    await page.locator('.backdrop').click({ position: { x: 350, y: 400 } })
+    await expect(page.locator('.panel-l')).not.toBeInViewport()
+  })
+})
+
+test('гостевая страница читается на телефоне', async ({ page, browser }) => {
+  const path = `${uniq('ГостьТелефон')}.md`
+  await seed(path, '# Гость с телефона\n\nДлинный текст для проверки переносов. '.repeat(8) + '\n')
+
+  await openApp(page)
+  await openNote(page, path)
+  await page.locator('.pill', { hasText: 'ПОДЕЛИТЬСЯ' }).click()
+  await page.locator('.dialog button', { hasText: 'Создать ссылку' }).click()
+  const url = await page.locator('.share-result input').inputValue()
+
+  const guest = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    storageState: { cookies: [], origins: [] },
+  })
+  const guestPage = await guest.newPage()
+  await guestPage.goto(url)
+
+  await expect(guestPage.locator('.guest-note h1')).toHaveText('Гость с телефона')
+  const overflow = await guestPage.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow, 'гостевая страница разъезжается вбок').toBeLessThanOrEqual(0)
+
+  await guest.close()
+})
+
+// ───────────────────────── переименование ─────────────────────────
+
+test('история не обрывается после переименования', async ({ page }) => {
+  const base = uniq('Переезд')
+  const oldPath = `${base}/Старое.md`
+  const newPath = `${base}/Новое.md`
+
+  // Две версии под старым именем.
+  const h1 = await seed(oldPath, '# Переезд\n\nпервая версия\n')
+  const h2 = await seed(oldPath, '# Переезд\n\nвторая версия\n', h1)
+
+  // Переименование приезжает как удаление плюс создание — так его
+  // присылает демон, когда файл переложили в папке.
+  await removeNote(oldPath, h2)
+  await seed(newPath, '# Переезд\n\nвторая версия\n')
+
+  await openApp(page)
+  await openNote(page, newPath)
+
+  // История должна тянуться из-под прежнего имени, иначе заметка
+  // выглядела бы только что созданной.
+  await expect(page.locator('.history div')).not.toHaveCount(1)
+  await expect(page.locator('.history .was').first()).toContainText('Старое')
 })
