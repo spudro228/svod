@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -23,15 +24,25 @@ import (
 	"github.com/spudro228/svod/internal/webui"
 )
 
+// version подставляется при сборке релиза через -ldflags.
+// В сборке из исходников остаётся «из исходников».
+var version = "из исходников"
+
 func main() {
 	var (
-		addr  = flag.String("addr", env("SVOD_ADDR", ":8080"), "адрес прослушивания")
-		data  = flag.String("data", env("SVOD_DATA", "./data"), "каталог с meta.db и blobs/")
-		token = flag.String("token", os.Getenv("SVOD_TOKEN"), "токен доступа; пустой отключает проверку")
+		addr    = flag.String("addr", env("SVOD_ADDR", ":8080"), "адрес прослушивания")
+		data    = flag.String("data", env("SVOD_DATA", "./data"), "каталог с meta.db и blobs/")
+		token   = flag.String("token", os.Getenv("SVOD_TOKEN"), "токен доступа; пустой отключает проверку")
 		origins = flag.String("origins", os.Getenv("SVOD_ORIGINS"),
 			"через запятую: откуда ещё разрешён WebSocket, например localhost:5173 для дев-сервера")
 	)
+	showVersion := flag.Bool("version", false, "показать версию и выйти")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("svod " + version)
+		return
+	}
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 

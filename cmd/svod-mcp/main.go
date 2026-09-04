@@ -33,12 +33,22 @@ import (
 	"github.com/spudro228/svod/internal/mcp"
 )
 
+// version подставляется при сборке релиза через -ldflags.
+// В сборке из исходников остаётся «из исходников».
+var version = "из исходников"
+
 func main() {
 	var (
 		server = flag.String("server", env("SVOD_SERVER", "http://localhost:8080"), "адрес свода")
 		token  = flag.String("token", os.Getenv("SVOD_TOKEN"), "токен доступа")
 	)
+	showVersion := flag.Bool("version", false, "показать версию и выйти")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("svod " + version)
+		return
+	}
 
 	s := &mcp.Server{
 		Server: strings.TrimSuffix(*server, "/"),

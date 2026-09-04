@@ -1,0 +1,98 @@
+name: Релиз
+
+# Собирается по тегу: git tag v0.3 && git push origin v0.3
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Сборка и публикация
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # ── Сначала проверки: сломанный релиз хуже отсутствующего ──
+      - name: Собрать веб-клиент
+        run: |
+          npm ci
+          npm run build
+        working-directory: web
+
+      - name: Тесты
+        run: |
+          go vet ./...
+          go test ./... -count=1
+
+      # ── Сборка под все платформы ──
+      #
+      # Клиент уже вшит в svodd через go:embed, поэтому сервер уезжает
+      # одним файлом. cgo не нужен: sqlite у нас на чистом Go.
+      - name: Собрать бинарники
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          version="${GITHUB_REF_NAME}"
+          mkdir -p dist
+
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            out="build/${os}-${arch}"
+            mkdir -p "$out"
+
+            for cmd in svod svodd svod-mcp; do
+              GOOS="$os" GOARCH="$arch" go build \
+                -trimpath -ldflags "-s -w -X main.version=${version}" \
+                -o "$out/$cmd" "./cmd/$cmd"
+            done
+
+            cp README.md CHANGELOG.md "$out/"
+            tar -czf "dist/svod-${version}-${os}-${arch}.tar.gz" -C "$out" .
+          done
+
+          # Контрольные суммы: скачавший может проверить, что файл целый.
+          cd dist && sha256sum *.tar.gz > checksums.txt
+          ls -lh
+
+      - name: Выделить раздел changelog для этой версии
+        id: notes
+        run: |
+          version="${GITHUB_REF_NAME}"
+          # Берём кусок между заголовком этой версии и следующим.
+          awk -v v="## $version" '
+            $0 ~ "^" v { found = 1; next }
+            found && /^## v/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "В CHANGELOG.md нет раздела для $version — см. полный список изменений." > release-notes.md
+          fi
+          cat release-notes.md
+
+      - name: Опубликовать релиз
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Свод ${{ github.ref_name }}"
+          body_path: release-notes.md
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          fail_on_unmatched_files: true

@@ -24,6 +24,10 @@ import (
 	"github.com/spudro228/svod/internal/watch"
 )
 
+// version подставляется при сборке релиза через -ldflags.
+// В сборке из исходников остаётся «из исходников».
+var version = "из исходников"
+
 func main() {
 	var (
 		vault  = flag.String("vault", env("SVOD_VAULT", "."), "папка свода")
@@ -37,7 +41,13 @@ func main() {
 		exts   = flag.String("ext", local.DefaultExts,
 			"ограничить расширениями через запятую; по умолчанию синхронизируется всё")
 	)
+	showVersion := flag.Bool("version", false, "показать версию и выйти")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("svod " + version)
+		return
+	}
 
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
