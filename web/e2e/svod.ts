@@ -39,6 +39,15 @@ export async function seed(path: string, content: string, baseHash = ''): Promis
   return body.hash
 }
 
+/** Удаляет файл так, как это делает демон при исчезновении с диска. */
+export async function removeNote(path: string, baseHash: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/v1/files/${encodePath(path)}`, {
+    method: 'DELETE',
+    headers: { ...auth(), 'If-Match': baseHash },
+  })
+  if (!res.ok) throw new Error(`delete ${path}: ${res.status}`)
+}
+
 /** Читает файл с сервера — так проверяем, что правка реально сохранилась. */
 export async function fetchContent(path: string): Promise<string> {
   const res = await fetch(`${BASE}/api/v1/raw/${encodePath(path)}`, { headers: auth() })
