@@ -98,6 +98,9 @@ func New(st *store.Store, token string, origins []string, webFS fs.FS, log *slog
 			r.Delete("/files/*", s.del)
 			r.Get("/stream", s.stream)
 
+			r.Get("/order", s.rootOrder)
+			r.Put("/order", s.setRootOrder)
+
 			r.Post("/share", s.createShare)
 			r.Get("/share", s.listShares)
 			r.Delete("/share/{key}", s.revokeShare)
@@ -348,6 +351,32 @@ func (s *Server) tags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tags": all})
+}
+
+// rootOrder отдаёт порядок корневых папок, заданный пользователем.
+func (s *Server) rootOrder(w http.ResponseWriter, r *http.Request) {
+	order, err := s.st.RootOrder()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"order": order})
+}
+
+func (s *Server) setRootOrder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Order []string `json:"order"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "не разобрал порядок")
+		return
+	}
+	if err := s.st.SetRootOrder(req.Order); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	order, _ := s.st.RootOrder()
+	writeJSON(w, http.StatusOK, map[string]any{"order": order})
 }
 
 func (s *Server) put(w http.ResponseWriter, r *http.Request) {

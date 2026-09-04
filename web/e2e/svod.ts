@@ -62,6 +62,21 @@ export async function fetchHash(path: string): Promise<string> {
   return body.hash
 }
 
+/** Сбрасывает пользовательский порядок папок: тесты не должны влиять друг на друга. */
+export async function resetOrder(): Promise<void> {
+  const res = await fetch(`${BASE}/api/v1/order`, {
+    method: 'PUT',
+    headers: { ...auth(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order: [] }),
+  })
+  if (!res.ok) throw new Error(`order: ${res.status}`)
+}
+
+/** Имена корневых строк дерева сверху вниз. */
+export async function rootNames(page: Page): Promise<string[]> {
+  return page.locator('.panel-l .row .name').allInnerTexts()
+}
+
 /** Уникальный суффикс, чтобы тесты не спорили за одни и те же пути. */
 export function uniq(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`

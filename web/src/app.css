@@ -638,3 +638,21 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ───────────── Перетаскивание корневых папок ───────────── */
+
+.row.is-movable { cursor: grab; }
+.row.is-movable:active { cursor: grabbing; }
+
+/* Взятую строку приглушаем, чтобы было видно, что именно едет */
+.row.is-dragging { opacity: 0.4; }
+
+/* Куда встанет: линия сверху, а не заливка — заливка спорит
+   с подсветкой выбранной заметки */
+.row.is-over { box-shadow: inset 0 2px 0 var(--accent); }
+
+/* На телефоне перетаскивания нет: там нет и мыши, а долгий тап
+   конфликтует с прокруткой списка */
+@media (max-width: 860px) {
+  .row.is-movable { cursor: default; }
+}
