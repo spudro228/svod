@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -463,6 +464,11 @@ func (s *Store) History(path string, limit int) ([]proto.Version, error) {
 		}
 		current = prev
 	}
+
+	// Звенья цепочки собираются по одному, поэтому внутри списка порядок
+	// сбивается: версия старого имени может оказаться выше более новой.
+	// Пересортировываем по номеру изменения — так история читается сверху вниз.
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq > out[j].Seq })
 	return out, nil
 }
 

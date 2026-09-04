@@ -136,11 +136,20 @@ func main() {
 	w := watch.NewWatcher(root, agent.Ign, log)
 	log.Info("слежу за папкой; Ctrl+C чтобы остановить")
 
+	rescan := func() {
+		// Каталог переименовали или перенесли: событий на файлы внутри
+		// не будет, узнать о них можно только обходом.
+		log.Info("менялся каталог, обхожу свод заново")
+		if err := agent.SyncAll(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("обход не удался", "err", err)
+		}
+	}
+
 	if err := w.Run(ctx, func(rel string) {
 		if err := agent.SyncOne(ctx, rel); err != nil && ctx.Err() == nil {
 			log.Warn("не смог синхронизировать", "path", rel, "err", err)
 		}
-	}); err != nil {
+	}, rescan); err != nil {
 		log.Error("слежение оборвалось", "err", err)
 	}
 	report(agent, log)

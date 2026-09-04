@@ -158,6 +158,9 @@ func (a *Agent) apply(ctx context.Context, c proto.FileMeta) error {
 		if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
 			return err
 		}
+		// Пустой каталог после удаления последнего файла оставлять нельзя:
+		// при переименовании папки на второй машине копились бы пустышки.
+		a.pruneEmptyDirs(filepath.Dir(full))
 		a.Log.Info("удалён с сервера", "path", c.Path)
 		return a.State.Forget(c.Path)
 	}
@@ -443,6 +446,26 @@ func (a *Agent) writeFile(rel string, content []byte) error {
 		return err
 	}
 	return nil
+}
+
+// pruneEmptyDirs убирает опустевшие каталоги вверх до корня свода.
+// Сам корень и служебные каталоги не трогает.
+func (a *Agent) pruneEmptyDirs(dir string) {
+	root := filepath.Clean(a.Vault)
+	for i := 0; i < 32; i++ {
+		dir = filepath.Clean(dir)
+		if dir == root || !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) > 0 {
+			return
+		}
+		if err := os.Remove(dir); err != nil {
+			return
+		}
+		dir = filepath.Dir(dir)
+	}
 }
 
 // ───────────────────────── поток изменений ─────────────────────────
