@@ -20,6 +20,21 @@
    источник правды          демон       блобы + лог + индекс
 ```
 
+## Готовые сборки
+
+Бинарники под macOS и Linux лежат в
+[релизах](https://github.com/spudro228/svod/releases). В архиве три файла:
+`svod` — демон, `svodd` — сервер с вшитым клиентом, `svod-mcp` — мост
+для Claude Desktop.
+
+```bash
+tar -xzf svod-v0.3-darwin-arm64.tar.gz
+install -m755 svod svod-mcp ~/.local/bin/
+svod -version
+```
+
+Что менялось от версии к версии — [CHANGELOG.md](CHANGELOG.md).
+
 ## Запуск
 
 ```bash
