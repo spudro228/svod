@@ -10,7 +10,13 @@ import (
 
 func open(t *testing.T) *store.Store {
 	t.Helper()
-	st, err := store.Open(t.TempDir())
+	return openAt(t, t.TempDir())
+}
+
+// openAt нужен там, где важно переоткрыть то же хранилище.
+func openAt(t *testing.T, dir string) *store.Store {
+	t.Helper()
+	st, err := store.Open(dir)
 	if err != nil {
 		t.Fatalf("хранилище: %v", err)
 	}

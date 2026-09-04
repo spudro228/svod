@@ -124,6 +124,20 @@ export const api = {
     get<{ versions: Version[] }>(`/api/v1/history/${encodePath(path)}`),
   tags: () => get<{ tags: Record<string, number> }>('/api/v1/tags'),
 
+  /** Порядок корневых папок живёт на сервере: он переезжает между устройствами. */
+  order: () => get<{ order: string[] }>('/api/v1/order'),
+
+  async setOrder(order: string[]): Promise<string[]> {
+    const res = await fetch('/api/v1/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order }),
+    })
+    if (res.status === 401) throw new UnauthorizedError()
+    if (!res.ok) throw new Error(`Не смог сохранить порядок: ${res.status}`)
+    return ((await res.json()) as { order: string[] }).order
+  },
+
   /** Временные ссылки: выдать, перечислить, отозвать. */
   shares: () => get<{ shares: Share[] }>('/api/v1/share'),
 

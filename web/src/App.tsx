@@ -31,6 +31,27 @@ type TreeNode = {
   children: TreeNode[]
 }
 
+/**
+ * Сортирует корень по заданному пользователем порядку.
+ * Папки, которых в списке нет, идут следом по алфавиту — так новая папка
+ * не теряется и не оказывается в случайном месте.
+ */
+function applyOrder(nodes: TreeNode[], order: string[]): TreeNode[] {
+  if (order.length === 0) return nodes
+
+  const rank = new Map(order.map((name, i) => [name, i]))
+  return [...nodes].sort((a, b) => {
+    const ra = rank.get(a.name)
+    const rb = rank.get(b.name)
+    if (ra !== undefined && rb !== undefined) return ra - rb
+    if (ra !== undefined) return -1
+    if (rb !== undefined) return 1
+    // Оба вне списка — прежний порядок: папки до файлов, дальше по алфавиту.
+    if (a.dir !== b.dir) return a.dir ? -1 : 1
+    return a.name.localeCompare(b.name, 'ru')
+  })
+}
+
 function buildTree(files: FileMeta[]): TreeNode[] {
   const root: TreeNode = { name: '', path: '', dir: true, children: [] }
 
@@ -115,13 +136,14 @@ export default function App() {
   const [showRight, setShowRight] = useState(!narrow)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [sharing, setSharing] = useState(false)
+  const [order, setOrder] = useState<string[]>([])
   const [theme, setTheme] = useState<Theme>(readTheme)
   // null — ещё не спросили у сервера; false — вход нужен.
   const [authed, setAuthed] = useState<boolean | null>(null)
 
   const editorRef = useRef<EditorHandle | null>(null)
   const mainRef = useRef<HTMLElement>(null)
-  const tree = useMemo(() => buildTree(files), [files])
+  const tree = useMemo(() => applyOrder(buildTree(files), order), [files, order])
 
   const dirty = note !== null && draft !== null && draft !== note.content
 
@@ -218,6 +240,30 @@ export default function App() {
     }
   }, [note, draft, saving, loadTree])
 
+  // Перетаскивание корневой папки. Порядок отправляем целиком, а не
+  // «переставь A перед B»: так сервер не должен ничего домысливать,
+  // а клиент остаётся единственным местом, где эта логика живёт.
+  const moveRoot = useCallback(
+    async (from: string, to: string) => {
+      if (from === to) return
+      const names = tree.map((n) => n.name)
+      const fromIdx = names.indexOf(from)
+      const toIdx = names.indexOf(to)
+      if (fromIdx < 0 || toIdx < 0) return
+
+      names.splice(toIdx, 0, ...names.splice(fromIdx, 1))
+      setOrder(names) // показываем сразу, не дожидаясь сервера
+      try {
+        setOrder(await api.setOrder(names))
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+        // Сервер не принял — возвращаемся к тому, что у него сохранено.
+        void api.order().then((r) => setOrder(r.order))
+      }
+    },
+    [tree],
+  )
+
   // Разрешение конфликта: своя версия уходит отдельным файлом,
   // ровно как это делает демон на диске.
   const saveAsCopy = useCallback(async () => {
@@ -282,6 +328,10 @@ export default function App() {
   useEffect(() => {
     if (authed !== true) return
     void loadTree()
+    void api
+      .order()
+      .then((r) => setOrder(r.order))
+      .catch(() => setOrder([]))
     const close = openStream(
       (newSeq) => {
         setSeq(newSeq)
@@ -409,6 +459,7 @@ export default function App() {
             depth={0}
             active={path}
             expanded={expanded}
+            onMoveRoot={moveRoot}
             onToggle={(p) =>
               setExpanded((prev) => {
                 const next = new Set(prev)
@@ -758,6 +809,7 @@ function Tree({
   expanded,
   onToggle,
   onOpen,
+  onMoveRoot,
 }: {
   nodes: TreeNode[]
   depth: number
@@ -765,18 +817,60 @@ function Tree({
   expanded: Set<string>
   onToggle: (p: string) => void
   onOpen: (p: string) => void
+  onMoveRoot?: (from: string, to: string) => void
 }) {
+  // Перетаскивание только на верхнем уровне и только для папок:
+  // вложенные ветки и файлы двигать нельзя — их порядок задан деревом.
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [over, setOver] = useState<string | null>(null)
+
   return (
     <>
       {nodes.map((n) => {
         const isOpen = expanded.has(n.path)
+        const movable = depth === 0 && n.dir && onMoveRoot !== undefined
+
         return (
           <div key={n.path}>
             <button
-              className={`row ${!n.dir && n.path === active ? 'is-active' : ''}`}
+              className={[
+                'row',
+                !n.dir && n.path === active ? 'is-active' : '',
+                movable ? 'is-movable' : '',
+                dragging === n.name ? 'is-dragging' : '',
+                over === n.name && dragging !== n.name ? 'is-over' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
               style={{ paddingLeft: 12 + depth * 12 }}
               onClick={() => (n.dir ? onToggle(n.path) : onOpen(n.path))}
               title={n.path}
+              draggable={movable}
+              onDragStart={(e) => {
+                if (!movable) return
+                setDragging(n.name)
+                e.dataTransfer.effectAllowed = 'move'
+                // Некоторые браузеры не начинают перенос без полезной нагрузки.
+                e.dataTransfer.setData('text/plain', n.name)
+              }}
+              onDragOver={(e) => {
+                if (!movable || dragging === null) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setOver(n.name)
+              }}
+              onDragLeave={() => setOver((v) => (v === n.name ? null : v))}
+              onDrop={(e) => {
+                if (!movable || dragging === null) return
+                e.preventDefault()
+                onMoveRoot?.(dragging, n.name)
+                setDragging(null)
+                setOver(null)
+              }}
+              onDragEnd={() => {
+                setDragging(null)
+                setOver(null)
+              }}
             >
               <span className="caret">{n.dir ? (isOpen ? '▾' : '▸') : ''}</span>
               <span className="name">{n.dir ? n.name : displayName(n.name)}</span>

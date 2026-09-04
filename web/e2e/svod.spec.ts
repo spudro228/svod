@@ -6,6 +6,8 @@ import {
   openNote,
   press,
   removeNote,
+  resetOrder,
+  rootNames,
   seed,
   TOKEN,
   uniq,
@@ -688,4 +690,113 @@ test('история не обрывается после переименова
   // выглядела бы только что созданной.
   await expect(page.locator('.history div')).not.toHaveCount(1)
   await expect(page.locator('.history .was').first()).toContainText('Старое')
+})
+
+// ───────────────────────── порядок папок ─────────────────────────
+
+test.describe('перетаскивание корневых папок', () => {
+  // Порядок общий на весь свод, поэтому тесты идут по одному
+  // и начинают с чистого листа.
+  test.describe.configure({ mode: 'serial' })
+
+  const a = 'ААА-первая'
+  const b = 'БББ-вторая'
+  const c = 'ВВВ-третья'
+
+  test.beforeAll(async () => {
+    await seed(`${a}/файл.md`, '# Первая\n')
+    await seed(`${b}/файл.md`, '# Вторая\n')
+    await seed(`${c}/файл.md`, '# Третья\n')
+  })
+
+  test.beforeEach(async () => {
+    await resetOrder()
+  })
+
+  test.afterAll(async () => {
+    await resetOrder()
+  })
+
+  test('без заданного порядка папки идут по алфавиту', async ({ page }) => {
+    await openApp(page)
+    const names = await rootNames(page)
+    expect(names.indexOf(a)).toBeLessThan(names.indexOf(b))
+    expect(names.indexOf(b)).toBeLessThan(names.indexOf(c))
+  })
+
+  test('перетаскивание меняет порядок и переживает перезагрузку', async ({ page }) => {
+    await openApp(page)
+
+    const third = page.locator('.panel-l .row', { hasText: c })
+    const first = page.locator('.panel-l .row', { hasText: a })
+    await third.dragTo(first)
+
+    // Третья должна оказаться выше первой.
+    await expect
+      .poll(async () => {
+        const names = await rootNames(page)
+        return names.indexOf(c) < names.indexOf(a)
+      })
+      .toBe(true)
+
+    // Порядок хранится на сервере, поэтому переживает перезагрузку —
+    // и переедет на другое устройство.
+    await page.reload()
+    await expect(page.locator('.panel-l .row').first()).toBeVisible()
+    const names = await rootNames(page)
+    expect(names.indexOf(c)).toBeLessThan(names.indexOf(a))
+  })
+
+  test('порядок виден в другом браузере: он хранится не локально', async ({ page, browser }) => {
+    await openApp(page)
+    await page.locator('.panel-l .row', { hasText: c }).dragTo(
+      page.locator('.panel-l .row', { hasText: a }),
+    )
+    await expect
+      .poll(async () => (await rootNames(page)).indexOf(c) < (await rootNames(page)).indexOf(a))
+      .toBe(true)
+
+    // Другой контекст — своё хранилище браузера, но тот же сервер.
+    const other = await browser.newContext({ storageState: 'e2e/.auth.json' })
+    const otherPage = await other.newPage()
+    await otherPage.goto('/')
+    await expect(otherPage.locator('.panel-l .row').first()).toBeVisible()
+
+    const names = await rootNames(otherPage)
+    expect(names.indexOf(c)).toBeLessThan(names.indexOf(a))
+    await other.close()
+  })
+
+  test('вложенные папки и файлы перетаскивать нельзя', async ({ page }) => {
+    await openApp(page)
+
+    // Корневая папка — можно.
+    await expect(page.locator('.panel-l .row', { hasText: a }).first()).toHaveAttribute(
+      'draggable',
+      'true',
+    )
+
+    // Разворачиваем и смотрим на вложенное.
+    await page.locator('.panel-l .row', { hasText: a }).first().click()
+    const child = page.locator('.panel-l .row', { hasText: 'файл' }).first()
+    await expect(child).toBeVisible()
+    await expect(child).toHaveAttribute('draggable', 'false')
+  })
+
+  test('новая папка не теряется: встаёт после заданных', async ({ page }) => {
+    await openApp(page)
+    await page.locator('.panel-l .row', { hasText: c }).dragTo(
+      page.locator('.panel-l .row', { hasText: a }),
+    )
+    await expect.poll(async () => (await rootNames(page)).indexOf(c) === 0).toBeTruthy()
+
+    // Папка, которой не было в момент задания порядка.
+    const fresh = `ЯЯЯ-${uniq('новая')}`
+    await seed(`${fresh}/файл.md`, '# Новая\n')
+
+    await expect.poll(async () => (await rootNames(page)).includes(fresh)).toBe(true)
+    const names = await rootNames(page)
+    // Заданные — впереди, новая — среди неупорядоченных, но в дереве есть.
+    expect(names.indexOf(c)).toBeLessThan(names.indexOf(fresh))
+  })
 })
