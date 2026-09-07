@@ -110,6 +110,13 @@
 
 # ── Запуск ────────────────────────────────────────────────────────────
 
+# Хендлер перезапуска по умолчанию ждёт конца play, а проверки ниже должны
+# бить уже по новому конфигу. Без этого деплой со сменой домена проверяет
+# ещё живой старый Caddy — и, что хуже, при падении проверки хендлер
+# не отрабатывает вовсе: конфиг на диске новый, а контейнер со старым.
+- name: Применить изменения конфигов до проверок
+  ansible.builtin.meta: flush_handlers
+
 - name: Поднять свод
   ansible.builtin.command:
     cmd: docker compose up -d --remove-orphans
@@ -117,16 +124,35 @@
   register: svod_up
   changed_when: "'Started' in svod_up.stderr or 'Created' in svod_up.stderr"
 
-- name: Дождаться, пока сервер ответит
+# follow_redirects: none здесь обязателен. По умолчанию uri идёт по редиректу
+# на https и на новом домене упирается в ещё не выпущенный сертификат —
+# задача падает с tlsv1 alert internal error вместо честного 308.
+- name: Дождаться, пока поднимется Caddy
   ansible.builtin.uri:
     url: http://127.0.0.1/healthz
     headers:
       Host: "{{ svod_domain }}"
+    follow_redirects: none
     status_code: [200, 301, 308]
   register: svod_health
   until: svod_health.status in [200, 301, 308]
   retries: 20
   delay: 3
+
+# Редирект от Caddy ещё не значит, что сертификат выпущен и сервер за ним
+# отвечает. Проверяем снаружи, со своей машины: это ровно тот путь, которым
+# ходят демоны. Let's Encrypt на новом домене думает до минуты — ждём дольше.
+- name: Дождаться сертификата и ответа сервера по https
+  ansible.builtin.uri:
+    url: "https://{{ svod_domain }}/healthz"
+    validate_certs: true
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  register: svod_https
+  until: svod_https.status == 200
+  retries: 30
+  delay: 5
 
 # ── Бэкапы ────────────────────────────────────────────────────────────
 
