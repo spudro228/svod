@@ -767,7 +767,7 @@ test.describe('перетаскивание корневых папок', () => 
     await other.close()
   })
 
-  test('вложенные папки и файлы перетаскивать нельзя', async ({ page }) => {
+  test('вложенные папки перетаскивать нельзя, файлы можно', async ({ page }) => {
     await openApp(page)
 
     // Корневая папка — можно.
@@ -776,11 +776,12 @@ test.describe('перетаскивание корневых папок', () => 
       'true',
     )
 
-    // Разворачиваем и смотрим на вложенное.
+    // Разворачиваем и смотрим на вложенное: файл едет в другую папку,
+    // а вложенная папка стоит там, где её положило дерево.
     await page.locator('.panel-l .row', { hasText: a }).first().click()
     const child = page.locator('.panel-l .row', { hasText: 'файл' }).first()
     await expect(child).toBeVisible()
-    await expect(child).toHaveAttribute('draggable', 'false')
+    await expect(child).toHaveAttribute('draggable', 'true')
   })
 
   test('новая папка не теряется: встаёт после заданных', async ({ page }) => {
@@ -875,5 +876,79 @@ test.describe('создание', () => {
 
     await expect.poll(() => fetchContent(`${parent}/🧠 Идеи/Первая.md`)).toBe('')
     await expect(page.locator('.tree-empty')).toHaveCount(0)
+  })
+})
+
+// ───────────────────────── перенос файлов ─────────────────────────
+
+test.describe('перенос файла в другую папку', () => {
+  test('файл уезжает в папку, старый путь исчезает, история тянется', async ({ page }) => {
+    const from = uniq('Откуда')
+    const to = uniq('Куда')
+    const h1 = await seed(`${from}/Путник.md`, '# Путник\n\nпервая\n')
+    await seed(`${from}/Путник.md`, '# Путник\n\nвторая\n', h1)
+    await seed(`${to}/Сосед.md`, '# Сосед\n')
+    await openApp(page)
+
+    await page.locator('.row', { hasText: from }).click()
+    await page.locator('.row', { hasText: 'Путник' }).dragTo(page.locator('.row', { hasText: to }))
+
+    await expect.poll(() => fetchContent(`${to}/Путник.md`)).toBe('# Путник\n\nвторая\n')
+    await expect(fetchContent(`${from}/Путник.md`)).rejects.toThrow()
+
+    await openNote(page, `${to}/Путник.md`)
+    await expect(page.locator('.history .was').first()).toContainText('Путник')
+  })
+
+  test('брошенный на файл едет в папку этого файла, мимо папок — в корень', async ({ page }) => {
+    const from = uniq('Исход')
+    const to = uniq('Цель')
+    const name = uniq('Бродяга')
+    await seed(`${from}/${name}.md`, '# Бродяга\n')
+    await seed(`${to}/Якорь.md`, '# Якорь\n')
+    await openApp(page)
+
+    await page.locator('.row', { hasText: from }).click()
+    await page.locator('.row', { hasText: to }).click()
+    await page.locator('.row', { hasText: name }).dragTo(page.locator(`.row[title="${to}/Якорь.md"]`))
+    await expect.poll(() => fetchContent(`${to}/${name}.md`)).toBe('# Бродяга\n')
+
+    await page.locator('.row', { hasText: name }).dragTo(page.locator('.panel-head'))
+    await expect.poll(() => fetchContent(`${name}.md`)).toBe('# Бродяга\n')
+    await expect(fetchContent(`${to}/${name}.md`)).rejects.toThrow()
+  })
+
+  test('занятое имя в папке назначения не затирается', async ({ page }) => {
+    const from = uniq('Дубль-из')
+    const to = uniq('Дубль-в')
+    await seed(`${from}/Тёзка.md`, '# мой\n')
+    await seed(`${to}/Тёзка.md`, '# чужой\n')
+    await openApp(page)
+
+    let message = ''
+    page.once('dialog', (d) => {
+      message = d.message()
+      void d.accept()
+    })
+    await page.locator('.row', { hasText: from }).click()
+    await page.locator('.row', { hasText: 'Тёзка' }).first().dragTo(page.locator('.row', { hasText: to }))
+
+    await expect.poll(() => message).toContain('уже есть')
+    expect(await fetchContent(`${to}/Тёзка.md`)).toBe('# чужой\n')
+    expect(await fetchContent(`${from}/Тёзка.md`)).toBe('# мой\n')
+  })
+
+  test('открытая заметка после переноса остаётся открытой по новому адресу', async ({ page }) => {
+    const from = uniq('Было')
+    const to = uniq('Стало')
+    await seed(`${from}/Открытая.md`, '# Открытая\n\nтекст\n')
+    await seed(`${to}/Другая.md`, '# Другая\n')
+    await openApp(page)
+    await openNote(page, `${from}/Открытая.md`)
+
+    await page.locator('.row', { hasText: 'Открытая' }).dragTo(page.locator('.row', { hasText: to }))
+
+    await expect(page).toHaveURL(new RegExp(`/n/${encodeURIComponent(to)}/`))
+    await expect(page.locator('.note h1')).toHaveText('Открытая')
   })
 })

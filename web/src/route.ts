@@ -40,6 +40,10 @@ export function pushNote(path: string, anchor?: string): void {
   if (url !== location.pathname + location.hash) history.pushState(null, '', url)
 }
 
+export function replaceNote(path: string): void {
+  history.replaceState(null, '', noteURL(path))
+}
+
 export function replaceAnchor(path: string, anchor: string): void {
   history.replaceState(null, '', noteURL(path, anchor))
 }

@@ -19,6 +19,7 @@ import {
   pathFromLocation,
   pushNote,
   replaceAnchor,
+  replaceNote,
   saveScroll,
 } from './route'
 
@@ -165,6 +166,8 @@ export default function App() {
   // Диалог создания: в какой папке и что создаём. '' — корень свода.
   const [creating, setCreating] = useState<{ parent: string; kind: CreateKind } | null>(null)
   const [emptyDirs, setEmptyDirs] = useState<string[]>(readEmptyDirs)
+  const [drag, setDrag] = useState<Drag | null>(null)
+  const [dragOver, setDragOver] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   const [theme, setTheme] = useState<Theme>(readTheme)
   // null — ещё не спросили у сервера; false — вход нужен.
@@ -287,6 +290,59 @@ export default function App() {
     setCreating(null)
   }, [])
 
+  // Перенос в другую папку — то же, что переименование с диска:
+  // заливка по новому пути и удаление старого. Историю версий сервер
+  // свяжет сам по совпадению содержимого. Сначала копия, потом удаление:
+  // сорвись что посередине — файл окажется в двух местах, а не нигде.
+  const moveFile = useCallback(
+    async (from: string, toDir: string) => {
+      const name = from.split('/').pop() ?? from
+      const to = (toDir ? `${toDir}/` : '') + name
+      if (to === from) return
+      const meta = files.find((f) => f.path === from)
+      if (!meta) return
+      if (files.some((f) => f.path === to)) {
+        alert(`В «${toDir || 'корне свода'}» уже есть ${name}`)
+        return
+      }
+      if (from === path && dirtyRef.current) {
+        alert('Сначала сохрани правки — ⌘S')
+        return
+      }
+
+      try {
+        await api.save(to, await api.rawBlob(from), '')
+      } catch (e) {
+        alert(`Не смог перенести: ${e instanceof Error ? e.message : e}`)
+        return
+      }
+      try {
+        await api.remove(from, meta.hash)
+      } catch (e) {
+        alert(
+          e instanceof ConflictError
+            ? `Файл скопирован, но «${from}» успели поменять — старый оставлен на месте`
+            : `Файл скопирован, но старый не удалился: ${e instanceof Error ? e.message : e}`,
+        )
+      }
+
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        const parts = toDir ? toDir.split('/') : []
+        for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
+        return next
+      })
+      await loadTree()
+      // Открытая заметка переехала — адрес заменяем, а не добавляем:
+      // «назад» на несуществующий путь привёл бы в никуда.
+      if (from === path) {
+        replaceNote(to)
+        await open(to, true, false)
+      }
+    },
+    [files, path, loadTree, open],
+  )
+
   // Сохранение. Конфликт не молчаливый: сервер ничего не перезаписал,
   // и пользователь решает, что делать со своей версией.
   const save = useCallback(async () => {
@@ -336,6 +392,15 @@ export default function App() {
     },
     [tree],
   )
+
+  const dnd: Dnd = {
+    drag,
+    over: dragOver,
+    setDrag,
+    setOver: setDragOver,
+    onMoveRoot: (from, to) => void moveRoot(from, to),
+    onMoveFile: (from, toDir) => void moveFile(from, toDir),
+  }
 
   // Разрешение конфликта: своя версия уходит отдельным файлом,
   // ровно как это делает демон на диске.
@@ -524,7 +589,27 @@ export default function App() {
       />
 
       <div className={bodyClass}>
-        <nav className="panel panel-l">
+        {/* Пустое место панели и шапка — это корень: файл, брошенный
+            мимо папок, уезжает на верхний уровень. */}
+        <nav
+          className={`panel panel-l ${drag && !drag.dir && dragOver === '' ? 'is-drop-root' : ''}`}
+          onDragOver={(e) => {
+            if (!drag || drag.dir) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            setDragOver('')
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(null)
+          }}
+          onDrop={(e) => {
+            if (!drag || drag.dir) return
+            e.preventDefault()
+            void moveFile(drag.path, '')
+            setDrag(null)
+            setDragOver(null)
+          }}
+        >
           <div className="panel-head">
             <p className="label">Свод</p>
             <button
@@ -550,7 +635,7 @@ export default function App() {
             depth={0}
             active={path}
             expanded={expanded}
-            onMoveRoot={moveRoot}
+            dnd={dnd}
             onCreate={(parent) => setCreating({ parent, kind: 'note' })}
             onToggle={(p) =>
               setExpanded((prev) => {
@@ -1064,6 +1149,25 @@ function ConflictBar({ onReload, onCopy }: { onReload: () => void; onCopy: () =>
 
 // ───────────────────────── дерево ─────────────────────────
 
+/** Что тянут мышью: корневую папку ради порядка или файл ради переноса. */
+type Drag = { path: string; dir: boolean }
+
+/** Общее на всё дерево: файл тянут с одного уровня на другой. */
+type Dnd = {
+  drag: Drag | null
+  /** Куда сейчас бросят: путь корневой папки или папки назначения, '' — корень. */
+  over: string | null
+  setDrag: (d: Drag | null) => void
+  setOver: (p: string | null) => void
+  onMoveRoot: (from: string, to: string) => void
+  onMoveFile: (from: string, toDir: string) => void
+}
+
+function parentOf(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i < 0 ? '' : path.slice(0, i)
+}
+
 function Tree({
   nodes,
   depth,
@@ -1071,8 +1175,8 @@ function Tree({
   expanded,
   onToggle,
   onOpen,
-  onMoveRoot,
   onCreate,
+  dnd,
 }: {
   nodes: TreeNode[]
   depth: number
@@ -1080,19 +1184,24 @@ function Tree({
   expanded: Set<string>
   onToggle: (p: string) => void
   onOpen: (p: string) => void
-  onMoveRoot?: (from: string, to: string) => void
   onCreate: (parent: string) => void
+  dnd: Dnd
 }) {
-  // Перетаскивание только на верхнем уровне и только для папок:
-  // вложенные ветки и файлы двигать нельзя — их порядок задан деревом.
-  const [dragging, setDragging] = useState<string | null>(null)
-  const [over, setOver] = useState<string | null>(null)
+  const { drag, over } = dnd
 
   return (
     <>
       {nodes.map((n) => {
         const isOpen = expanded.has(n.path)
-        const movable = depth === 0 && n.dir && onMoveRoot !== undefined
+        // Корневые папки двигаются ради порядка, файлы — в другую папку.
+        // Вложенные папки не двигаются: их место задано деревом.
+        const reorderable = depth === 0 && n.dir
+        const draggable = reorderable || !n.dir
+        // Файл, брошенный на файл, едет в папку этого файла.
+        const target = n.dir ? n.path : parentOf(n.path)
+
+        const accepts = (d: Drag | null): d is Drag =>
+          d !== null && (d.dir ? reorderable && d.path !== n.path : true)
 
         return (
           <div key={n.path} className="node">
@@ -1100,40 +1209,44 @@ function Tree({
               className={[
                 'row',
                 !n.dir && n.path === active ? 'is-active' : '',
-                movable ? 'is-movable' : '',
-                dragging === n.name ? 'is-dragging' : '',
-                over === n.name && dragging !== n.name ? 'is-over' : '',
+                draggable ? 'is-movable' : '',
+                drag?.path === n.path ? 'is-dragging' : '',
+                drag?.dir && reorderable && over === n.path && drag.path !== n.path ? 'is-over' : '',
+                drag && !drag.dir && n.dir && over === n.path ? 'is-drop' : '',
               ]
                 .filter(Boolean)
                 .join(' ')}
               style={{ paddingLeft: 12 + depth * 12 }}
               onClick={() => (n.dir ? onToggle(n.path) : onOpen(n.path))}
               title={n.path}
-              draggable={movable}
+              draggable={draggable}
               onDragStart={(e) => {
-                if (!movable) return
-                setDragging(n.name)
+                if (!draggable) return
+                dnd.setDrag({ path: n.path, dir: n.dir })
                 e.dataTransfer.effectAllowed = 'move'
                 // Некоторые браузеры не начинают перенос без полезной нагрузки.
-                e.dataTransfer.setData('text/plain', n.name)
+                e.dataTransfer.setData('text/plain', n.path)
               }}
               onDragOver={(e) => {
-                if (!movable || dragging === null) return
+                if (!accepts(drag)) return
                 e.preventDefault()
+                // Строка ответила сама — панели под ней отвечать не нужно.
+                e.stopPropagation()
                 e.dataTransfer.dropEffect = 'move'
-                setOver(n.name)
+                dnd.setOver(drag.dir ? n.path : target)
               }}
-              onDragLeave={() => setOver((v) => (v === n.name ? null : v))}
               onDrop={(e) => {
-                if (!movable || dragging === null) return
+                if (!accepts(drag)) return
                 e.preventDefault()
-                onMoveRoot?.(dragging, n.name)
-                setDragging(null)
-                setOver(null)
+                e.stopPropagation()
+                if (drag.dir) dnd.onMoveRoot(drag.path, n.path)
+                else void dnd.onMoveFile(drag.path, target)
+                dnd.setDrag(null)
+                dnd.setOver(null)
               }}
               onDragEnd={() => {
-                setDragging(null)
-                setOver(null)
+                dnd.setDrag(null)
+                dnd.setOver(null)
               }}
             >
               <span className="caret">{n.dir ? (isOpen ? '▾' : '▸') : ''}</span>
@@ -1166,6 +1279,7 @@ function Tree({
                 onToggle={onToggle}
                 onOpen={onOpen}
                 onCreate={onCreate}
+                dnd={dnd}
               />
             )}
           </div>

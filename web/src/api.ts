@@ -201,6 +201,32 @@ export const api = {
     }
     return (await res.json()) as PutResult
   },
+
+  /** Содержимое файла как есть — годится и для вложений, не только для текста. */
+  async rawBlob(path: string): Promise<Blob> {
+    const res = await fetch(rawURL(path))
+    if (res.status === 401) throw new UnauthorizedError()
+    if (!res.ok) throw new Error(`не смог прочитать ${path}: ${res.status}`)
+    return res.blob()
+  },
+
+  /**
+   * Удалить файл. hash — версия, которую удаляем: если на сервере уже
+   * другая, он откажет с ConflictError и ничего не тронет.
+   */
+  async remove(path: string, hash: string): Promise<PutResult> {
+    const res = await fetch(`/api/v1/files/${encodePath(path)}`, {
+      method: 'DELETE',
+      headers: { 'If-Match': hash, 'X-Svod-Device': encodeURIComponent('браузер') },
+    })
+    if (res.status === 401) throw new UnauthorizedError()
+    if (res.status === 409) {
+      const body = (await res.json()) as { server_hash: string; seq: number }
+      throw new ConflictError(body.server_hash, body.seq)
+    }
+    if (!res.ok) throw new Error(`не смог удалить ${path}: ${res.status}`)
+    return (await res.json()) as PutResult
+  },
 }
 
 export type PutResult = { seq: number; hash: string }
