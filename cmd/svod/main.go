@@ -38,7 +38,9 @@ func main() {
 		clone  = flag.Bool("clone", false, "скачать весь свод в пустую папку и выйти")
 		force  = flag.Bool("force", false, "разрешить clone в непустую папку")
 		status = flag.Bool("status", false, "показать состояние и выйти")
-		exts   = flag.String("ext", local.DefaultExts,
+		state  = flag.String("state", os.Getenv("SVOD_STATE"),
+			"файл состояния; по умолчанию .svod/state.db внутри свода")
+		exts = flag.String("ext", local.DefaultExts,
 			"ограничить расширениями через запятую; по умолчанию синхронизируется всё")
 	)
 	showVersion := flag.Bool("version", false, "показать версию и выйти")
@@ -68,7 +70,12 @@ func main() {
 		}
 	}
 
-	st, err := local.Open(root)
+	var st *local.State
+	if *state != "" {
+		st, err = local.OpenAt(*state)
+	} else {
+		st, err = local.Open(root)
+	}
 	if err != nil {
 		log.Error("не смог открыть состояние", "err", err)
 		os.Exit(1)

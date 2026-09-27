@@ -26,11 +26,17 @@ INSERT OR IGNORE INTO meta(k, v) VALUES ('last_seq', '0');
 
 // Open создаёт .svod/state.db внутри свода.
 func Open(vault string) (*State, error) {
-	dir := filepath.Join(vault, ".svod")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	return OpenAt(filepath.Join(vault, ".svod", "state.db"))
+}
+
+// OpenAt открывает состояние по явному пути. Нужно, когда за одной папкой
+// следят два демона с разными серверами: состояние у каждого своё, иначе
+// один принимает позицию в логе другого сервера за свою.
+func OpenAt(path string) (*State, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	dsn := filepath.Join(dir, "state.db") + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
+	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err

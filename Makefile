@@ -1,12 +1,13 @@
 VAULT  ?= $(HOME)/obsidian/Vk
 SERVER ?= http://localhost:8080
 
-.PHONY: help web build run daemon sync status up down logs rebuild clean \
+.PHONY: help app web build run daemon sync status up down logs rebuild clean \
         image provision deploy deploy-all restart
 
 help:
 	@echo "Свод — команды"
 	@echo ""
+	@echo "  make app       свод как приложение: сервер, демон и браузер локально"
 	@echo "  make up        поднять сервер в Docker на :8080"
 	@echo "  make daemon    запустить демона на маке (следит за VAULT)"
 	@echo "  make sync      разовая заливка свода без слежения"
@@ -35,6 +36,11 @@ build: web
 	go build -trimpath -o bin/svodd    ./cmd/svodd
 	go build -trimpath -o bin/svod     ./cmd/svod
 	go build -trimpath -o bin/svod-mcp ./cmd/svod-mcp
+
+# Свод как приложение: локальный сервер, демон к нему и браузер.
+# Сборку делает сам скрипт, если бинарников ещё нет.
+app:
+	VAULT="$(VAULT)" sh scripts/app.sh
 
 run: build
 	./bin/svodd -addr :8080 -data ./data
