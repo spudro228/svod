@@ -1,0 +1,57 @@
+---
+# Поднять свод после остановки ВМ, без сборки и отправки образа.
+# ВМ без статического IP после запуска получает новый адрес, а домен
+# sslip.io содержит IP в имени — поэтому Caddyfile пересобирается
+# под текущий домен, и Caddy выпускает на него новый сертификат.
+- name: Перезапустить свод
+  hosts: svod
+  become: true
+  vars:
+    svod_compose: docker compose --project-directory {{ svod_dir }}
+  tasks:
+    - name: Caddyfile под текущий домен
+      ansible.builtin.template:
+        src: roles/svod/templates/Caddyfile.j2
+        dest: "{{ svod_dir }}/Caddyfile"
+        mode: "0644"
+      register: svod_caddyfile
+
+    - name: Поднять контейнеры
+      ansible.builtin.command: "{{ svod_compose }} up -d"
+      changed_when: true
+
+    # Caddyfile смонтирован файлом: без пересоздания контейнер
+    # продолжит работать со старым доменом.
+    - name: Пересоздать Caddy со свежим Caddyfile
+      ansible.builtin.command: "{{ svod_compose }} up -d --force-recreate caddy"
+      when: svod_caddyfile.changed
+
+    - name: Дождаться, пока поднимется Caddy
+      ansible.builtin.uri:
+        url: http://127.0.0.1/healthz
+        headers:
+          Host: "{{ svod_domain }}"
+        follow_redirects: none
+        status_code: [200, 301, 308]
+      register: svod_health
+      until: svod_health.status in [200, 301, 308]
+      retries: 20
+      delay: 3
+
+    - name: Дождаться сертификата и ответа по https
+      ansible.builtin.uri:
+        url: "https://{{ svod_domain }}/healthz"
+        validate_certs: true
+        status_code: 200
+      delegate_to: localhost
+      become: false
+      register: svod_https
+      until: svod_https.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Напомнить про демонов
+      ansible.builtin.debug:
+        msg:
+          - "Свод работает: https://{{ svod_domain }}"
+          - "Если домен сменился, перезапусти демонов с -server https://{{ svod_domain }}"

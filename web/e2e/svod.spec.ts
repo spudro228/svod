@@ -800,3 +800,80 @@ test.describe('перетаскивание корневых папок', () => 
     expect(names.indexOf(c)).toBeLessThan(names.indexOf(fresh))
   })
 })
+
+// ───────────────────────── создание файлов и папок ─────────────────────────
+
+test.describe('создание', () => {
+  test('заметка в папке создаётся пустой и сразу открывается на правку', async ({ page }) => {
+    const dir = uniq('Создание')
+    await seed(`${dir}/Соседка.md`, '# Соседка\n')
+    await openApp(page)
+
+    await page.locator('.row', { hasText: dir }).hover()
+    await page.getByRole('button', { name: `Создать в «${dir}»` }).click()
+    await expect(page.locator('.create select')).toHaveValue(dir)
+    await page.locator('.create input').fill('Свежая')
+    await expect(page.locator('.create-path')).toHaveText(`${dir}/Свежая.md`)
+    await page.locator('.create button[type=submit]').click()
+
+    await expect(page.locator('.editor .cm-content')).toBeVisible()
+    await expect(page.locator('.crumb b')).toHaveText('Свежая.md')
+    await expect.poll(() => fetchContent(`${dir}/Свежая.md`)).toBe('')
+
+    await page.locator('.editor .cm-content').click()
+    await page.keyboard.type('первая строка')
+    await press(page, 's')
+    await expect.poll(() => fetchContent(`${dir}/Свежая.md`)).toBe('первая строка')
+  })
+
+  test('занятое имя не даёт создать заметку', async ({ page }) => {
+    const dir = uniq('Занято')
+    await seed(`${dir}/Есть.md`, '# Есть\n')
+    await openApp(page)
+
+    await page.locator('.row', { hasText: dir }).hover()
+    await page.getByRole('button', { name: `Создать в «${dir}»` }).click()
+    await page.locator('.create input').fill('Есть')
+
+    await expect(page.locator('.create .login-err')).toHaveText('Такая заметка уже есть')
+    await expect(page.locator('.create button[type=submit]')).toBeDisabled()
+  })
+
+  test('косая черта в имени отклоняется', async ({ page }) => {
+    await openApp(page)
+    await page.getByRole('button', { name: 'Новая заметка' }).click()
+    await page.locator('.create input').fill('a/b')
+    await expect(page.locator('.create button[type=submit]')).toBeDisabled()
+  })
+
+  test('папка с эмодзи видна сразу, а на сервер уезжает с первой заметкой', async ({ page }) => {
+    const parent = uniq('Родитель')
+    await seed(`${parent}/файл.md`, '# файл\n')
+    await openApp(page)
+
+    await page.getByRole('button', { name: 'Новая папка' }).click()
+    await page.locator('.create select').selectOption(parent)
+    await page.locator('.create input').fill('Идеи')
+    await page.locator('.emoji-grid button', { hasText: '🧠' }).click()
+    await expect(page.locator('.create-path')).toHaveText(`${parent}/🧠 Идеи`)
+    await page.locator('.create button[type=submit]').click()
+
+    const row = page.locator('.row', { hasText: '🧠 Идеи' })
+    await expect(row).toBeVisible()
+    await expect(page.locator('.tree-empty')).toBeVisible()
+
+    // Пустая папка переживает перезагрузку: её помнит браузер.
+    // После перезагрузки ветки свёрнуты — раскрываем обе.
+    await page.reload()
+    await page.locator('.row', { hasText: parent }).click()
+    await page.locator('.row', { hasText: '🧠 Идеи' }).click()
+
+    await page.locator('.tree-empty button').click()
+    await expect(page.locator('.create select')).toHaveValue(`${parent}/🧠 Идеи`)
+    await page.locator('.create input').fill('Первая')
+    await page.locator('.create button[type=submit]').click()
+
+    await expect.poll(() => fetchContent(`${parent}/🧠 Идеи/Первая.md`)).toBe('')
+    await expect(page.locator('.tree-empty')).toHaveCount(0)
+  })
+})

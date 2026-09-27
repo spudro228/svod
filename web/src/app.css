@@ -111,6 +111,44 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .row .caret { color: var(--fg-faint); font-size: 9px; width: 8px; flex: none; }
 .row .name { overflow: hidden; text-overflow: ellipsis; }
 
+/* Создание: «＋» в шапке панели и у каждой папки. */
+.panel-head { display: flex; align-items: center; gap: 2px; padding-right: 8px; margin-bottom: 7px; }
+.panel-head .label { flex: 1; margin: 0; }
+.add {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+.add:hover, .add:focus-visible { color: var(--accent); background: var(--bg-raised); }
+
+.node { position: relative; }
+.add-in {
+  position: absolute;
+  top: calc((var(--row) - 22px) / 2);
+  right: 6px;
+  opacity: 0;
+}
+.row:hover + .add-in, .add-in:hover, .add-in:focus-visible { opacity: 1; }
+.row:has(+ .add-in:hover) { background: var(--bg-raised); color: var(--fg); }
+/* На сенсорном экране наведения нет — кнопка видна всегда. */
+@media (hover: none) { .add-in { opacity: 1; } }
+
+.tree-empty {
+  margin: 0;
+  height: var(--row);
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.tree-empty button { color: var(--accent); margin-left: 4px; }
+.tree-empty button:hover { text-decoration: underline; }
+
 /* ───────────── Заметка ───────────── */
 
 .main { overflow: auto; min-width: 0; }
@@ -558,6 +596,48 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .share-row .until { flex: 1; }
 
 .dialog-foot { display: flex; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 12px; }
+
+/* ───────────── Создание файла и папки ───────────── */
+
+.create .dialog-foot { gap: 8px; }
+.create .seg { display: flex; align-self: flex-start; }
+.create .seg button { border-radius: 0; }
+.create .seg button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.create .seg button:last-child { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
+.create .seg button.is-on { color: var(--accent); border-color: var(--accent); position: relative; }
+
+.create .field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+.name-input { display: flex; align-items: center; gap: 8px; }
+.name-input input { flex: 1; min-width: 0; }
+.name-emoji { font-size: 20px; line-height: 1; }
+
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 4px;
+}
+.create .emoji-grid button {
+  height: 34px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  border-color: transparent;
+  color: var(--fg-faint);
+}
+.create .emoji-grid button:hover { background: var(--bg-raised); border-color: var(--line-strong); }
+.create .emoji-grid button.is-on { border-color: var(--accent); background: var(--accent-bg); }
+
+.create-path {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
 
 /* ───────────── Телефон ───────────── */
 

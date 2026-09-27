@@ -2,7 +2,7 @@ VAULT  ?= $(HOME)/obsidian/Vk
 SERVER ?= http://localhost:8080
 
 .PHONY: help web build run daemon sync status up down logs rebuild clean \
-        image provision deploy deploy-all
+        image provision deploy deploy-all restart
 
 help:
 	@echo "Свод — команды"
@@ -23,6 +23,7 @@ help:
 	@echo "  make image     собрать образ и упаковать для отправки"
 	@echo "  make deploy    выложить новую версию на VPS"
 	@echo "  make deploy-all  подготовка и выкладка одной командой"
+	@echo "  make restart IP=x.x.x.x  поднять свод после остановки ВМ"
 	@echo ""
 	@echo "  VAULT = $(VAULT)"
 
@@ -87,6 +88,14 @@ deploy: image
 
 deploy-all: image
 	cd deploy && ansible-playbook site.yml
+
+# После остановки ВМ меняется IP: make restart IP=<новый адрес>.
+# Без IP берётся тот, что уже записан в inventory.ini.
+restart:
+ifdef IP
+	sed -i '' -E 's/ansible_host=[0-9.]+/ansible_host=$(IP)/' deploy/inventory.ini
+endif
+	cd deploy && ansible-playbook restart.yml --ssh-common-args='-o StrictHostKeyChecking=accept-new'
 
 check:
 	cd deploy && ansible-playbook site.yml --syntax-check

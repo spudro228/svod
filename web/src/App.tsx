@@ -52,23 +52,30 @@ function applyOrder(nodes: TreeNode[], order: string[]): TreeNode[] {
   })
 }
 
-function buildTree(files: FileMeta[]): TreeNode[] {
+/**
+ * Строит дерево из плоского списка файлов. dirs — папки, которые есть
+ * только в клиенте: сервер хранит файлы, а не каталоги, и пустая папка
+ * появляется у него лишь вместе с первой заметкой внутри.
+ */
+function buildTree(files: FileMeta[], dirs: string[] = []): TreeNode[] {
   const root: TreeNode = { name: '', path: '', dir: true, children: [] }
 
-  for (const f of files) {
-    const parts = f.path.split('/')
+  const insert = (full: string, leafIsDir: boolean) => {
+    const parts = full.split('/')
     let cur = root
     parts.forEach((part, i) => {
-      const isLeaf = i === parts.length - 1
+      const dir = i < parts.length - 1 || leafIsDir
       const path = parts.slice(0, i + 1).join('/')
-      let next = cur.children.find((c) => c.name === part && c.dir === !isLeaf)
+      let next = cur.children.find((c) => c.name === part && c.dir === dir)
       if (!next) {
-        next = { name: part, path, dir: !isLeaf, children: [] }
+        next = { name: part, path, dir, children: [] }
         cur.children.push(next)
       }
       cur = next
     })
   }
+  for (const f of files) insert(f.path, false)
+  for (const d of dirs) insert(d, true)
 
   const sortRec = (n: TreeNode) => {
     n.children.sort((a, b) =>
@@ -105,13 +112,32 @@ function isImage(path: string): boolean {
   return /\.(png|jpe?g|gif|webp|svg)$/i.test(path)
 }
 
+/** Все папки дерева плоским списком, в порядке обхода. */
+function listDirs(nodes: TreeNode[]): string[] {
+  return nodes.flatMap((n) => (n.dir ? [n.path, ...listDirs(n.children)] : []))
+}
+
+/**
+ * Имя нового файла или папки. Вложенность задаётся выбором родителя,
+ * поэтому косая черта в имени — почти наверняка опечатка, а не намерение.
+ */
+function checkName(name: string): string | null {
+  if (name === '') return 'Нужно имя'
+  if (name.includes('/') || name.includes('\\')) return 'Без косой черты: папку выбери в списке'
+  if (name.startsWith('.')) return 'Имя с точки на диске станет скрытым, а .svod и .obsidian — служебные'
+  return null
+}
+
 // ───────────────────────── приложение ─────────────────────────
 
 type Overlay = null | 'files' | 'search'
 type Mode = 'read' | 'edit'
 type Theme = 'dark' | 'light'
 
+type CreateKind = 'note' | 'dir'
+
 const THEME_KEY = 'svod.theme'
+const DIRS_KEY = 'svod.empty-dirs'
 
 export default function App() {
   const [files, setFiles] = useState<FileMeta[]>([])
@@ -136,6 +162,9 @@ export default function App() {
   const [showRight, setShowRight] = useState(!narrow)
   const [overlay, setOverlay] = useState<Overlay>(null)
   const [sharing, setSharing] = useState(false)
+  // Диалог создания: в какой папке и что создаём. '' — корень свода.
+  const [creating, setCreating] = useState<{ parent: string; kind: CreateKind } | null>(null)
+  const [emptyDirs, setEmptyDirs] = useState<string[]>(readEmptyDirs)
   const [order, setOrder] = useState<string[]>([])
   const [theme, setTheme] = useState<Theme>(readTheme)
   // null — ещё не спросили у сервера; false — вход нужен.
@@ -143,7 +172,11 @@ export default function App() {
 
   const editorRef = useRef<EditorHandle | null>(null)
   const mainRef = useRef<HTMLElement>(null)
-  const tree = useMemo(() => applyOrder(buildTree(files), order), [files, order])
+  const tree = useMemo(
+    () => applyOrder(buildTree(files, emptyDirs), order),
+    [files, emptyDirs, order],
+  )
+  const dirs = useMemo(() => listDirs(tree), [tree])
 
   const dirty = note !== null && draft !== null && draft !== note.content
 
@@ -171,6 +204,22 @@ export default function App() {
     }
   }, [theme])
 
+  // Пустые папки помним в браузере, пока в них не появится первый файл:
+  // дальше папку держит сервер, и локальная запись только мешает.
+  useEffect(() => {
+    if (files.length === 0) return
+    const alive = emptyDirs.filter((d) => !files.some((f) => f.path.startsWith(d + '/')))
+    if (alive.length !== emptyDirs.length) setEmptyDirs(alive)
+  }, [files, emptyDirs])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DIRS_KEY, JSON.stringify(emptyDirs))
+    } catch {
+      // приватное окно — папка проживёт до перезагрузки
+    }
+  }, [emptyDirs])
+
   const loadTree = useCallback(async () => {
     try {
       const t = await api.tree()
@@ -188,9 +237,9 @@ export default function App() {
   }, [])
 
   const open = useCallback(
-    async (p: string, force = false, push = true) => {
+    async (p: string, force = false, push = true): Promise<boolean> => {
       if (!force && dirtyRef.current && !confirm('Есть несохранённые правки. Уйти и потерять их?')) {
-        return
+        return false
       }
       if (push) pushNote(p)
       setPath(p)
@@ -210,9 +259,33 @@ export default function App() {
         setNote(null)
         setError(e instanceof Error ? e.message : String(e))
       }
+      return true
     },
     [narrow],
   )
+
+  // Новая заметка уходит на сервер сразу, пустой: без If-Match сервер
+  // примет её, только если такого файла ещё нет, и чужое не затрёт.
+  const createNote = useCallback(
+    async (p: string) => {
+      await api.save(p, '', '')
+      setCreating(null)
+      await loadTree()
+      if (await open(p)) setMode('edit')
+    },
+    [loadTree, open],
+  )
+
+  const createDir = useCallback((p: string) => {
+    setEmptyDirs((prev) => (prev.includes(p) ? prev : [...prev, p]))
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      const parts = p.split('/')
+      for (let i = 1; i <= parts.length; i++) next.add(parts.slice(0, i).join('/'))
+      return next
+    })
+    setCreating(null)
+  }, [])
 
   // Сохранение. Конфликт не молчаливый: сервер ничего не перезаписал,
   // и пользователь решает, что делать со своей версией.
@@ -452,7 +525,25 @@ export default function App() {
 
       <div className={bodyClass}>
         <nav className="panel panel-l">
-          <p className="label">Свод</p>
+          <div className="panel-head">
+            <p className="label">Свод</p>
+            <button
+              className="add"
+              onClick={() => setCreating({ parent: '', kind: 'note' })}
+              title="Новая заметка"
+              aria-label="Новая заметка"
+            >
+              ＋
+            </button>
+            <button
+              className="add"
+              onClick={() => setCreating({ parent: '', kind: 'dir' })}
+              title="Новая папка"
+              aria-label="Новая папка"
+            >
+              ⊞
+            </button>
+          </div>
           {tree.length === 0 && <p className="label">пусто</p>}
           <Tree
             nodes={tree}
@@ -460,6 +551,7 @@ export default function App() {
             active={path}
             expanded={expanded}
             onMoveRoot={moveRoot}
+            onCreate={(parent) => setCreating({ parent, kind: 'note' })}
             onToggle={(p) =>
               setExpanded((prev) => {
                 const next = new Set(prev)
@@ -523,6 +615,18 @@ export default function App() {
       )}
 
       {sharing && path && <ShareDialog path={path} onClose={() => setSharing(false)} />}
+
+      {creating && (
+        <CreateDialog
+          initialParent={creating.parent}
+          initialKind={creating.kind}
+          dirs={dirs}
+          files={files}
+          onNote={createNote}
+          onDir={createDir}
+          onClose={() => setCreating(null)}
+        />
+      )}
     </div>
   )
 }
@@ -687,6 +791,164 @@ function ShareDialog({ path, onClose }: { path: string; onClose: () => void }) {
   )
 }
 
+/**
+ * Эмодзи для папок. Первые — те, что уже прижились в своде,
+ * дальше общий набор. Любой другой можно вставить в имя руками.
+ */
+const FOLDER_EMOJI = [
+  '📖', '📓', '💼', '💻', '📚', '👥', '📊', '📋', '📝', '🗂️',
+  '📁', '🧠', '💡', '🎯', '🚀', '🛠️', '⚙️', '🔬', '🧪', '🎓',
+  '🏠', '❤️', '🌱', '✈️', '🎨', '🎵', '🎮', '💰', '📈', '🗓️',
+  '✅', '⭐', '🔥', '🔒', '🌍', '🤖', '📦', '🧩', '🐹', '🍳',
+]
+
+function CreateDialog({
+  initialParent,
+  initialKind,
+  dirs,
+  files,
+  onNote,
+  onDir,
+  onClose,
+}: {
+  initialParent: string
+  initialKind: CreateKind
+  dirs: string[]
+  files: FileMeta[]
+  onNote: (path: string) => Promise<void>
+  onDir: (path: string) => void
+  onClose: () => void
+}) {
+  const [kind, setKind] = useState<CreateKind>(initialKind)
+  const [parent, setParent] = useState(initialParent)
+  const [name, setName] = useState('')
+  const [emoji, setEmoji] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const clean = name.trim().replace(/\.md$/i, '')
+  const base = kind === 'dir' && emoji ? `${emoji} ${clean}` : clean
+  const full = (parent ? `${parent}/` : '') + (kind === 'note' ? `${base}.md` : base)
+
+  const problem =
+    checkName(clean) ??
+    (kind === 'note' && files.some((f) => f.path === full) ? 'Такая заметка уже есть' : null) ??
+    (kind === 'dir' && dirs.includes(full) ? 'Такая папка уже есть' : null)
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (busy || problem) return
+    if (kind === 'dir') {
+      onDir(full)
+      return
+    }
+    setBusy(true)
+    setErr(null)
+    try {
+      await onNote(full)
+    } catch (e) {
+      // Гонка: пока диалог был открыт, файл завёл кто-то другой.
+      setErr(e instanceof ConflictError ? 'Такая заметка уже есть' : e instanceof Error ? e.message : String(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="overlay" onMouseDown={onClose}>
+      <form className="dialog create" onMouseDown={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div className="seg" role="tablist">
+          <button type="button" className={kind === 'note' ? 'is-on' : ''} onClick={() => setKind('note')}>
+            Заметка
+          </button>
+          <button type="button" className={kind === 'dir' ? 'is-on' : ''} onClick={() => setKind('dir')}>
+            Папка
+          </button>
+        </div>
+
+        <label className="field">
+          Где
+          <select value={parent} onChange={(e) => setParent(e.target.value)}>
+            <option value="">корень свода</option>
+            {dirs.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          Название
+          <span className="name-input">
+            {kind === 'dir' && emoji && <span className="name-emoji">{emoji}</span>}
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={kind === 'note' ? 'Новая заметка' : 'Новая папка'}
+              spellCheck={false}
+            />
+          </span>
+        </label>
+
+        {kind === 'dir' && (
+          <div className="field">
+            Эмодзи
+            <div className="emoji-grid">
+              <button
+                type="button"
+                className={emoji === '' ? 'is-on' : ''}
+                onClick={() => setEmoji('')}
+                title="Без эмодзи"
+              >
+                ∅
+              </button>
+              {FOLDER_EMOJI.map((em) => (
+                <button
+                  type="button"
+                  key={em}
+                  className={emoji === em ? 'is-on' : ''}
+                  onClick={() => setEmoji(em)}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="dialog-hint create-path">{name.trim() ? full : ' '}</p>
+        {kind === 'dir' && (
+          <p className="dialog-hint">
+            Пустая папка видна только в этом браузере. На сервер и на диск она
+            попадёт вместе с первой заметкой внутри.
+          </p>
+        )}
+        {(err || (name.trim() && problem)) && <p className="login-err">{err ?? problem}</p>}
+
+        <div className="dialog-foot">
+          <button type="button" onClick={onClose}>
+            Отмена
+          </button>
+          <button type="submit" className="primary" disabled={busy || problem !== null}>
+            {busy ? 'Создаю…' : 'Создать'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function readEmptyDirs(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(DIRS_KEY) ?? '[]')
+    if (Array.isArray(v)) return v.filter((d): d is string => typeof d === 'string')
+  } catch {
+    // приватное окно или испорченная запись
+  }
+  return []
+}
+
 /** Узкий ли экран. Порог тот же, что в стилях. */
 function useNarrow(): boolean {
   const [narrow, setNarrow] = useState(
@@ -810,6 +1072,7 @@ function Tree({
   onToggle,
   onOpen,
   onMoveRoot,
+  onCreate,
 }: {
   nodes: TreeNode[]
   depth: number
@@ -818,6 +1081,7 @@ function Tree({
   onToggle: (p: string) => void
   onOpen: (p: string) => void
   onMoveRoot?: (from: string, to: string) => void
+  onCreate: (parent: string) => void
 }) {
   // Перетаскивание только на верхнем уровне и только для папок:
   // вложенные ветки и файлы двигать нельзя — их порядок задан деревом.
@@ -831,7 +1095,7 @@ function Tree({
         const movable = depth === 0 && n.dir && onMoveRoot !== undefined
 
         return (
-          <div key={n.path}>
+          <div key={n.path} className="node">
             <button
               className={[
                 'row',
@@ -875,6 +1139,24 @@ function Tree({
               <span className="caret">{n.dir ? (isOpen ? '▾' : '▸') : ''}</span>
               <span className="name">{n.dir ? n.name : displayName(n.name)}</span>
             </button>
+            {/* Кнопка рядом со строкой, а не внутри: кнопка в кнопке
+                недопустима, и клик по ней раскрывал бы папку. */}
+            {n.dir && (
+              <button
+                className="add add-in"
+                onClick={() => onCreate(n.path)}
+                title={`Создать в «${n.name}»`}
+                aria-label={`Создать в «${n.name}»`}
+              >
+                ＋
+              </button>
+            )}
+            {n.dir && isOpen && n.children.length === 0 && (
+              <p className="tree-empty" style={{ paddingLeft: 26 + depth * 12 }}>
+                пусто —{' '}
+                <button onClick={() => onCreate(n.path)}>создать заметку</button>
+              </p>
+            )}
             {n.dir && isOpen && (
               <Tree
                 nodes={n.children}
@@ -883,6 +1165,7 @@ function Tree({
                 expanded={expanded}
                 onToggle={onToggle}
                 onOpen={onOpen}
+                onCreate={onCreate}
               />
             )}
           </div>
