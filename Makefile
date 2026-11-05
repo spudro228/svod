@@ -1,7 +1,7 @@
 VAULT  ?= $(HOME)/obsidian/Vk
 SERVER ?= http://localhost:8080
 
-.PHONY: help app web build run daemon sync status up down logs rebuild clean \
+.PHONY: help app daemon-check daemon-restart daemon-logs web build run daemon sync status up down logs rebuild clean \
         image provision deploy deploy-all restart
 
 help:
@@ -12,6 +12,9 @@ help:
 	@echo "  make daemon    запустить демона на маке (следит за VAULT)"
 	@echo "  make sync      разовая заливка свода без слежения"
 	@echo "  make status    что демон думает о состоянии"
+	@echo "  make daemon-check    боевой демон (launchd): жив ли, куда ходит, ошибки"
+	@echo "  make daemon-restart  перезапустить его; IP=x.x.x.x или URL=… — сменить сервер"
+	@echo "  make daemon-logs     его журнал вживую; N=200 строк, ERRORS=1 только ошибки"
 	@echo ""
 	@echo "  make web       собрать веб-клиент"
 	@echo "  make build     собрать бинарники в ./bin"
@@ -41,6 +44,20 @@ build: web
 # Сборку делает сам скрипт, если бинарников ещё нет.
 app:
 	VAULT="$(VAULT)" sh scripts/app.sh
+
+# Боевой демон в launchd. IP или URL меняют адрес сервера в plist:
+# после перезапуска ВМ меняется IP, а с ним и домен sslip.io.
+# SERVER здесь не годится: у него есть значение по умолчанию для
+# make daemon, и оно молча переписывало бы адрес боевого демона.
+daemon-check:
+	sh scripts/daemon.sh check
+
+daemon-restart:
+	sh scripts/daemon.sh restart $(or $(URL),$(IP))
+
+N ?= 50
+daemon-logs:
+	sh scripts/daemon.sh logs $(N) $(if $(ERRORS),errors)
 
 run: build
 	./bin/svodd -addr :8080 -data ./data
