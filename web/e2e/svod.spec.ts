@@ -4,6 +4,7 @@ import {
   fetchHash,
   openApp,
   openNote,
+  peek,
   press,
   removeNote,
   resetOrder,
@@ -819,12 +820,12 @@ test.describe('создание', () => {
 
     await expect(page.locator('.editor .cm-content')).toBeVisible()
     await expect(page.locator('.crumb b')).toHaveText('Свежая.md')
-    await expect.poll(() => fetchContent(`${dir}/Свежая.md`)).toBe('')
+    await expect.poll(() => peek(`${dir}/Свежая.md`)).toBe('')
 
     await page.locator('.editor .cm-content').click()
     await page.keyboard.type('первая строка')
     await press(page, 's')
-    await expect.poll(() => fetchContent(`${dir}/Свежая.md`)).toBe('первая строка')
+    await expect.poll(() => peek(`${dir}/Свежая.md`)).toBe('первая строка')
   })
 
   test('занятое имя не даёт создать заметку', async ({ page }) => {
@@ -874,7 +875,7 @@ test.describe('создание', () => {
     await page.locator('.create input').fill('Первая')
     await page.locator('.create button[type=submit]').click()
 
-    await expect.poll(() => fetchContent(`${parent}/🧠 Идеи/Первая.md`)).toBe('')
+    await expect.poll(() => peek(`${parent}/🧠 Идеи/Первая.md`)).toBe('')
     await expect(page.locator('.tree-empty')).toHaveCount(0)
   })
 })
@@ -893,8 +894,9 @@ test.describe('перенос файла в другую папку', () => {
     await page.locator('.row', { hasText: from }).click()
     await page.locator('.row', { hasText: 'Путник' }).dragTo(page.locator('.row', { hasText: to }))
 
-    await expect.poll(() => fetchContent(`${to}/Путник.md`)).toBe('# Путник\n\nвторая\n')
-    await expect(fetchContent(`${from}/Путник.md`)).rejects.toThrow()
+    await expect.poll(() => peek(`${to}/Путник.md`)).toBe('# Путник\n\nвторая\n')
+    // Перенос — это заливка и следом удаление: старый путь исчезает не мгновенно.
+    await expect.poll(() => peek(`${from}/Путник.md`)).toBe(null)
 
     await openNote(page, `${to}/Путник.md`)
     await expect(page.locator('.history .was').first()).toContainText('Путник')
@@ -911,11 +913,15 @@ test.describe('перенос файла в другую папку', () => {
     await page.locator('.row', { hasText: from }).click()
     await page.locator('.row', { hasText: to }).click()
     await page.locator('.row', { hasText: name }).dragTo(page.locator(`.row[title="${to}/Якорь.md"]`))
-    await expect.poll(() => fetchContent(`${to}/${name}.md`)).toBe('# Бродяга\n')
+    await expect.poll(() => peek(`${to}/${name}.md`)).toBe('# Бродяга\n')
+    // Ждём конца первого переноса: пока старый файл не удалён и дерево
+    // не перечитано, строк с этим именем две.
+    await expect.poll(() => peek(`${from}/${name}.md`)).toBe(null)
+    await expect(page.locator('.row', { hasText: name })).toHaveCount(1)
 
     await page.locator('.row', { hasText: name }).dragTo(page.locator('.panel-head'))
-    await expect.poll(() => fetchContent(`${name}.md`)).toBe('# Бродяга\n')
-    await expect(fetchContent(`${to}/${name}.md`)).rejects.toThrow()
+    await expect.poll(() => peek(`${name}.md`)).toBe('# Бродяга\n')
+    await expect.poll(() => peek(`${to}/${name}.md`)).toBe(null)
   })
 
   test('занятое имя в папке назначения не затирается', async ({ page }) => {

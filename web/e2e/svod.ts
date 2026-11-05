@@ -55,6 +55,15 @@ export async function fetchContent(path: string): Promise<string> {
   return res.text()
 }
 
+/**
+ * Содержимое файла или null, если его нет. Для expect.poll: в отличие
+ * от fetchContent не бросает на 404, а брошенная ошибка обрывает опрос
+ * сразу — файл, который вот-вот появится, ронял бы тест.
+ */
+export async function peek(path: string): Promise<string | null> {
+  return fetchContent(path).catch(() => null)
+}
+
 export async function fetchHash(path: string): Promise<string> {
   const res = await fetch(`${BASE}/api/v1/note/${encodePath(path)}`, { headers: auth() })
   if (!res.ok) throw new Error(`note ${path}: ${res.status}`)
